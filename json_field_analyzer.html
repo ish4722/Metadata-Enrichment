@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON Field Analyzer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --surface2: #f0ede8;
+    --border: rgba(0,0,0,0.1);
+    --border2: rgba(0,0,0,0.18);
+    --text: #1a1917;
+    --text2: #5c5a56;
+    --text3: #9a9893;
+    --green: #2d6a2d; --green-bg: #eaf3de;
+    --amber: #7a4d0a; --amber-bg: #faeeda;
+    --red: #8b2020; --red-bg: #fcebeb;
+    --blue: #0c447c; --blue-bg: #e6f1fb;
+    --mono: 'Courier New', monospace;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181a;
+      --surface: #232325;
+      --surface2: #2c2c2f;
+      --border: rgba(255,255,255,0.1);
+      --border2: rgba(255,255,255,0.18);
+      --text: #ebebeb;
+      --text2: #a0a0a0;
+      --text3: #666;
+      --green: #9fe1cb; --green-bg: #085041;
+      --amber: #fac775; --amber-bg: #633806;
+      --red: #f09595; --red-bg: #501313;
+      --blue: #85b7eb; --blue-bg: #042c53;
+    }
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  header { margin-bottom: 2rem; }
+  header h1 { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  header p { color: var(--text2); font-size: 14px; }
+
+  /* Drop zone */
+  #dropzone {
+    border: 2px dashed var(--border2);
+    border-radius: var(--radius);
+    padding: 2.5rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    background: var(--surface);
+    margin-bottom: 1rem;
+  }
+  #dropzone:hover, #dropzone.drag-over {
+    background: var(--surface2);
+    border-color: var(--blue);
+  }
+  #dropzone .icon { font-size: 36px; margin-bottom: 10px; }
+  #dropzone p { color: var(--text2); font-size: 14px; margin-bottom: 4px; }
+  #dropzone span.link { color: var(--blue); text-decoration: underline; cursor: pointer; }
+  #dropzone small { color: var(--text3); font-size: 12px; }
+
+  /* File tags */
+  #fileList { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.5rem; }
+  .file-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; padding: 3px 10px;
+    background: var(--surface2);
+    border: 0.5px solid var(--border);
+    border-radius: 99px;
+    color: var(--text2);
+  }
+  .file-tag.error { color: var(--red); }
+  .file-tag svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+  /* Summary cards */
+  #summaryCards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+  .metric-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+  }
+  .metric-card .m-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .metric-card .m-value { font-size: 26px; font-weight: 600; }
+
+  /* Controls */
+  #controls {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    align-items: center; margin-bottom: 1rem;
+  }
+  .filter-btn {
+    background: transparent;
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm);
+    padding: 5px 14px; font-size: 13px;
+    cursor: pointer; color: var(--text2);
+    transition: background 0.12s;
+  }
+  .filter-btn:hover { background: var(--surface2); }
+  .filter-btn.active { background: var(--blue-bg); color: var(--blue); border-color: var(--blue); font-weight: 500; }
+
+  #searchBox {
+    margin-left: auto;
+    padding: 5px 10px;
+    font-size: 13px;
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    width: 200px;
+    outline: none;
+  }
+  #searchBox:focus { border-color: var(--blue); }
+
+  /* Export button */
+  #exportBtn {
+    padding: 5px 14px; font-size: 13px;
+    background: var(--surface); border: 0.5px solid var(--border2);
+    border-radius: var(--radius-sm); cursor: pointer; color: var(--text2);
+  }
+  #exportBtn:hover { background: var(--surface2); }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    text-align: left; padding: 10px 12px;
+    font-weight: 500; font-size: 12px;
+    color: var(--text2); border-bottom: 0.5px solid var(--border);
+    cursor: pointer; user-select: none;
+    white-space: nowrap;
+  }
+  thead th:hover { color: var(--text); }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 8px 12px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .field-name {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    word-break: break-all;
+    color: var(--text);
+  }
+  .field-name .depth-dot { color: var(--text3); }
+
+  .bar-wrap { background: var(--surface2); border-radius: 99px; height: 6px; width: 70px; display: inline-block; vertical-align: middle; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 99px; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 8px;
+    border-radius: var(--radius-sm); font-weight: 500;
+    white-space: nowrap;
+  }
+  .badge-always { background: var(--green-bg); color: var(--green); }
+  .badge-sometimes { background: var(--amber-bg); color: var(--amber); }
+  .badge-never { background: var(--red-bg); color: var(--red); }
+
+  /* Insights */
+  #insightsPanel {
+    margin-top: 1.5rem;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+  }
+  #insightsPanel h3 { font-size: 14px; font-weight: 600; margin-bottom: 1rem; }
+  .insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 640px) { .insights-grid { grid-template-columns: 1fr; } }
+  .insight-block h4 { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .insight-block p.desc { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+  .field-pill {
+    display: block; font-family: var(--mono);
+    font-size: 11px; padding: 2px 6px; margin-bottom: 3px;
+    background: var(--surface2); border-radius: 4px;
+    word-break: break-all;
+  }
+  .more-label { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  .insights-footer { margin-top: 1rem; padding-top: 1rem; border-top: 0.5px solid var(--border); font-size: 12px; color: var(--text3); }
+
+  /* Empty state */
+  #emptyState { text-align: center; padding: 3rem 1rem; color: var(--text2); }
+
+  #results { display: none; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>🔍 JSON Field Analyzer</h1>
+    <p>Upload multiple JSON files to see field coverage — what's always there, sometimes missing, or always null.</p>
+  </header>
+
+  <!-- Drop zone -->
+  <div id="dropzone">
+    <div class="icon">📂</div>
+    <p>Drop JSON files here or <span class="link" onclick="document.getElementById('fileInput').click()">browse</span></p>
+    <small>Supports multiple .json files · Nested objects are flattened with dot notation</small>
+    <input type="file" id="fileInput" accept=".json" multiple style="display:none">
+  </div>
+
+  <div id="fileList"></div>
+
+  <div id="results">
+    <div id="summaryCards"></div>
+
+    <div id="controls">
+      <span style="font-size:13px; color:var(--text2);">Filter:</span>
+      <button class="filter-btn active" onclick="setFilter('all',this)">All fields</button>
+      <button class="filter-btn" onclick="setFilter('always',this)">✓ Always present</button>
+      <button class="filter-btn" onclick="setFilter('sometimes',this)">~ Inconsistent</button>
+      <button class="filter-btn" onclick="setFilter('never',this)">✗ Always null</button>
+      <button id="exportBtn" onclick="exportCSV()">⬇ Export CSV</button>
+      <input id="searchBox" type="text" placeholder="Search field…" oninput="renderTable()">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortBy('field')" title="Sort by field name">Field name ⇅</th>
+            <th onclick="sortBy('present')" title="Files where field exists">Present ⇅</th>
+            <th onclick="sortBy('null')" title="Files where value is null">Null count ⇅</th>
+            <th onclick="sortBy('empty')" title="Files where value is empty string or []">Empty ⇅</th>
+            <th onclick="sortBy('coverage')" title="% of files with an actual value">Coverage ⇅</th>
+            <th>Status</th>
+            <th>Sample value</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+    <div id="insightsPanel"></div>
+  </div>
+
+  <div id="emptyState" style="display:none">
+    <p>No fields match your current filter / search.</p>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let allData    = [];
+let fieldStats = {};
+let fileCount  = 0;
+let sortKey    = 'coverage';
+let sortAsc    = false;
+let activeFilter = 'all';
+
+// ── File handling ──────────────────────────────────────
+const dropzone  = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+dropzone.addEventListener('click', e => {
+  if (e.target.tagName !== 'SPAN') fileInput.click();
+});
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  const jsonFiles = [...files].filter(f => f.name.toLowerCase().endsWith('.json'));
+  if (!jsonFiles.length) { alert('No .json files found.'); return; }
+
+  allData = [];
+  fieldStats = {};
+  fileCount = 0;
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('fileList').innerHTML = '';
+
+  let loaded = 0;
+  jsonFiles.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        allData.push({ name: file.name, data: parsed });
+      } catch(err) {
+        allData.push({ name: file.name, error: true, message: err.message });
+      }
+      loaded++;
+      if (loaded === jsonFiles.length) analyze();
+    };
+    reader.readAsText(file);
+  });
+}
+
+// ── Flatten nested object ──────────────────────────────
+function flattenKeys(obj, prefix = '') {
+  const result = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const full = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      Object.assign(result, flattenKeys(v, full));
+    } else {
+      result[full] = v;
+    }
+  }
+  return result;
+}
+
+// ── Analysis core ──────────────────────────────────────
+function analyze() {
+  fileCount = allData.filter(d => !d.error).length;
+
+  allData.forEach(({ data, error }) => {
+    if (error) return;
+    const flat = flattenKeys(data);
+    for (const [key, val] of Object.entries(flat)) {
+      if (!fieldStats[key]) {
+        fieldStats[key] = { present: 0, nullCount: 0, emptyCount: 0, samples: [] };
+      }
+      const s = fieldStats[key];
+      s.present++;
+      if (val === null || val === undefined) {
+        s.nullCount++;
+      } else if (val === '' || (Array.isArray(val) && val.length === 0)) {
+        s.emptyCount++;
+      } else {
+        if (s.samples.length < 3) {
+          const display = typeof val === 'object' ? JSON.stringify(val).slice(0, 60) : String(val).slice(0, 60);
+          if (!s.samples.includes(display)) s.samples.push(display);
+        }
+      }
+    }
+  });
+
+  // Render file tags
+  const fileList = document.getElementById('fileList');
+  fileList.innerHTML = allData.map(d => `
+    <span class="file-tag ${d.error ? 'error' : ''}">
+      ${d.error
+        ? `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 10.5a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5zm.75-3.25a.75.75 0 0 1-1.5 0V5.75a.75.75 0 0 1 1.5 0v2.5z"/></svg>`
+        : `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 1.75A.75.75 0 0 1 4.75 1h4.586a.75.75 0 0 1 .53.22l3.414 3.414c.14.14.22.331.22.53V14.25a.75.75 0 0 1-.75.75H4.75a.75.75 0 0 1-.75-.75V1.75zm1.5.75v11h6.5V6.5H8.75A.75.75 0 0 1 8 5.75V2.5H5.5zM9.5 3.56l1.44 1.44H9.5V3.56z"/></svg>`}
+      ${d.name}${d.error ? ' (parse error)' : ''}
+    </span>`).join('');
+
+  document.getElementById('results').style.display = 'block';
+  renderSummaryCards();
+  renderTable();
+  renderInsights();
+}
+
+// ── Helpers ────────────────────────────────────────────
+function getStatus(key) {
+  const s = fieldStats[key];
+  const effective = s.present - s.nullCount - s.emptyCount;
+  const cov = fileCount > 0 ? (effective / fileCount) * 100 : 0;
+  if (cov >= 100) return 'always';
+  if (cov <= 0)   return 'never';
+  return 'sometimes';
+}
+
+function getCoverage(key) {
+  const s = fieldStats[key];
+  const effective = s.present - s.nullCount - s.emptyCount;
+  return fileCount > 0 ? (effective / fileCount) * 100 : 0;
+}
+
+// ── Summary cards ──────────────────────────────────────
+function renderSummaryCards() {
+  const keys = Object.keys(fieldStats);
+  const always    = keys.filter(k => getStatus(k) === 'always').length;
+  const never     = keys.filter(k => getStatus(k) === 'never').length;
+  const sometimes = keys.length - always - never;
+  const errors    = allData.filter(d => d.error).length;
+
+  document.getElementById('summaryCards').innerHTML = `
+    <div class="metric-card">
+      <div class="m-label">📁 Files loaded</div>
+      <div class="m-value">${fileCount}${errors ? `<span style="font-size:14px;color:var(--red);"> (+${errors} err)</span>` : ''}</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label">🗂 Total fields</div>
+      <div class="m-value">${keys.length}</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label" style="color:var(--green)">✓ Always present</div>
+      <div class="m-value" style="color:var(--green)">${always}</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label" style="color:var(--amber)">~ Inconsistent</div>
+      <div class="m-value" style="color:var(--amber)">${sometimes}</div>
+    </div>
+    <div class="metric-card">
+      <div class="m-label" style="color:var(--red)">✗ Always null/missing</div>
+      <div class="m-value" style="color:var(--red)">${never}</div>
+    </div>`;
+}
+
+// ── Table rendering ────────────────────────────────────
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = (key === 'field'); }
+  renderTable();
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable();
+}
+
+function renderTable() {
+  const search = (document.getElementById('searchBox').value || '').toLowerCase();
+  let keys = Object.keys(fieldStats);
+
+  if (search) keys = keys.filter(k => k.toLowerCase().includes(search));
+  if (activeFilter !== 'all') keys = keys.filter(k => getStatus(k) === activeFilter);
+
+  keys.sort((a, b) => {
+    let va, vb;
+    switch (sortKey) {
+      case 'field':    va = a; vb = b; break;
+      case 'present':  va = fieldStats[a].present; vb = fieldStats[b].present; break;
+      case 'null':     va = fieldStats[a].nullCount; vb = fieldStats[b].nullCount; break;
+      case 'empty':    va = fieldStats[a].emptyCount; vb = fieldStats[b].emptyCount; break;
+      default:         va = getCoverage(a); vb = getCoverage(b);
+    }
+    if (va < vb) return sortAsc ? -1 : 1;
+    if (va > vb) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  const body = document.getElementById('tableBody');
+  const emptyState = document.getElementById('emptyState');
+
+  if (!keys.length) {
+    body.innerHTML = '';
+    emptyState.style.display = 'block';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  const barColor = { always: '#2d6a2d', sometimes: '#7a4d0a', never: '#8b2020' };
+  const badgeLabel = { always: '✓ always', sometimes: '~ partial', never: '✗ null/missing' };
+
+  body.innerHTML = keys.map(k => {
+    const s = fieldStats[k];
+    const cov = getCoverage(k);
+    const status = getStatus(k);
+    const covDisplay = Math.round(cov);
+    const nullPct = fileCount > 0 ? Math.round((s.nullCount / fileCount) * 100) : 0;
+    const emptyPct = fileCount > 0 ? Math.round((s.emptyCount / fileCount) * 100) : 0;
+    const sample = s.samples.length ? s.samples[0] : '—';
+
+    // Dim leading path for readability
+    const parts = k.split('.');
+    const fieldDisplay = parts.length > 1
+      ? `<span class="depth-dot">${parts.slice(0,-1).join('.')}.</span>${parts[parts.length-1]}`
+      : k;
+
+    return `<tr>
+      <td><span class="field-name">${fieldDisplay}</span></td>
+      <td style="text-align:center;">${s.present} / ${fileCount}</td>
+      <td style="text-align:center; color:${s.nullCount > 0 ? 'var(--red)' : 'var(--text3)'};">${s.nullCount} <span style="font-size:11px;color:var(--text3);">(${nullPct}%)</span></td>
+      <td style="text-align:center; color:${s.emptyCount > 0 ? 'var(--amber)' : 'var(--text3)'};">${s.emptyCount} <span style="font-size:11px;color:var(--text3);">(${emptyPct}%)</span></td>
+      <td style="white-space:nowrap;">
+        <span style="font-size:12px;font-weight:600;margin-right:6px;">${covDisplay}%</span>
+        <span class="bar-wrap"><span class="bar-fill" style="width:${covDisplay}%;background:${barColor[status]};"></span></span>
+      </td>
+      <td><span class="badge badge-${status}">${badgeLabel[status]}</span></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.samples.join(' | ')}">${sample}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Insights panel ─────────────────────────────────────
+function renderInsights() {
+  const keys = Object.keys(fieldStats);
+  const alwaysPresent = keys.filter(k => getStatus(k) === 'always');
+  const alwaysNull    = keys.filter(k => getStatus(k) === 'never');
+  const partial       = keys.filter(k => getStatus(k) === 'sometimes');
+  const highNull      = keys.filter(k => {
+    const s = fieldStats[k];
+    return s.present > 0 && (s.nullCount / s.present) > 0.8 && getStatus(k) !== 'never';
+  });
+
+  function fieldList(arr, max = 7) {
+    const shown = arr.slice(0, max);
+    const more  = arr.length - max;
+    return shown.map(k => `<code class="field-pill">${k}</code>`).join('')
+      + (more > 0 ? `<div class="more-label">+${more} more</div>` : '');
+  }
+
+  const totalNullFields = keys.filter(k => fieldStats[k].nullCount > 0).length;
+  const avgCoverage = keys.length
+    ? Math.round(keys.reduce((sum, k) => sum + getCoverage(k), 0) / keys.length)
+    : 0;
+
+  document.getElementById('insightsPanel').innerHTML = `
+    <h3>💡 Insights</h3>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;padding-bottom:1rem;border-bottom:0.5px solid var(--border);">
+      <div style="font-size:13px;"><strong>${avgCoverage}%</strong> <span style="color:var(--text2);">average field coverage</span></div>
+      <div style="font-size:13px;"><strong>${totalNullFields}</strong> <span style="color:var(--text2);">fields contain at least one null</span></div>
+      <div style="font-size:13px;"><strong>${Math.round(alwaysNull.length / keys.length * 100)}%</strong> <span style="color:var(--text2);">of fields are dead weight</span></div>
+    </div>
+    <div class="insights-grid">
+      <div class="insight-block">
+        <h4 style="color:var(--green)">✓ Stable / always populated (${alwaysPresent.length})</h4>
+        <p class="desc">These fields reliably carry data — treat as schema backbone.</p>
+        ${fieldList(alwaysPresent)}
+      </div>
+      <div class="insight-block">
+        <h4 style="color:var(--red)">✗ Dead fields — always null/missing (${alwaysNull.length})</h4>
+        <p class="desc">Never contain real values. Candidates for schema cleanup.</p>
+        ${fieldList(alwaysNull)}
+      </div>
+      <div class="insight-block">
+        <h4 style="color:var(--amber)">~ Inconsistent — present in some files (${partial.length})</h4>
+        <p class="desc">Populated in some records, absent or null in others. Investigate source variance.</p>
+        ${fieldList(partial)}
+      </div>
+      <div class="insight-block">
+        <h4 style="color:var(--blue)">⚠ Mostly-null fields — present but null &gt;80% (${highNull.length})</h4>
+        <p class="desc">Technically defined in the schema but almost never filled. Worth reviewing.</p>
+        ${fieldList(highNull)}
+      </div>
+    </div>
+    <div class="insights-footer">
+      Coverage = (files where field is non-null &amp; non-empty) ÷ (total files loaded) × 100. Nested objects are flattened with dot notation. Arrays with items count as "present"; empty arrays count as "empty".
+    </div>`;
+}
+
+// ── CSV Export ─────────────────────────────────────────
+function exportCSV() {
+  const keys = Object.keys(fieldStats);
+  const rows = [['field', 'present', 'null_count', 'empty_count', 'coverage_pct', 'status', 'sample_value']];
+  keys.forEach(k => {
+    const s = fieldStats[k];
+    rows.push([
+      k,
+      s.present,
+      s.nullCount,
+      s.emptyCount,
+      Math.round(getCoverage(k)),
+      getStatus(k),
+      s.samples[0] || ''
+    ]);
+  });
+
+  const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'field_analysis.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
