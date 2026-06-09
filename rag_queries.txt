@@ -1,0 +1,368 @@
+# RAG Queries Generated from JSON Schema Keys
+# Total queries: 363
+# Format: One query per line
+# Usage: Use these queries to search and retrieve relevant data from PDF documents
+
+1. What information is available about access control list?
+2. What information is available about access control list owners?
+3. What information is available about access control list viewers?
+4. What information is available about ancestry?
+5. What information is available about ancestry parents?
+6. What information is available about authority?
+7. What information is available about create time?
+8. What information is available about create user?
+9. What information is available about data?
+10. What information is available about associated block names?
+11. What information is available about associated country names?
+12. What information is available about associated facility names?
+13. What information is available about associated field names?
+14. What information is available about associated identities?
+15. What information is available about associated well names?
+16. What information is available about augmented document type?
+17. What information is available about block name?
+18. What information is available about business intention ID?
+19. What information is available about condition ID?
+20. What information is available about country name?
+21. What information is available about creation date time?
+22. What information is available about current operator?
+23. What information is available about current operator ID?
+24. What information is available about data source organisation ID?
+25. What information is available about datasets?
+26. What information is available about date modified?
+27. What information is available about default vertical crs ID?
+28. What information is available about default vertical measurement ID?
+29. What information is available about definitive trajectory ID?
+30. What information is available about description?
+31. What information is available about document language?
+32. What information is available about document subject?
+33. What information is available about document taxonomy ID?
+34. What information is available about document type ID?
+35. What information is available about existence kind?
+36. What information is available about extracted text?
+37. What information is available about facility description?
+38. What information is available about facility events?
+39. What information is available about facility events effective date time?
+40. What information is available about facility events facility event type ID?
+41. What information is available about facility events remark?
+42. What information is available about facility ID?
+43. What information is available about facility name?
+44. What information is available about facility operators?
+45. What information is available about facility operators facility operator ID?
+46. What information is available about facility operators facility operator organisation ID?
+47. What information is available about facility operators remark?
+48. What information is available about facility type ID?
+49. What information is available about field name?
+50. What information is available about flu ID direction ID?
+51. What information is available about formation name at total depth?
+52. What information is available about geo contexts?
+53. What information is available about geo contexts basin ID?
+54. What information is available about geo contexts field ID?
+55. What information is available about geo contexts geo political entity ID?
+56. What information is available about geo contexts geo type ID?
+57. What information is available about geo contexts play ID?
+58. What information is available about geo contexts prospect ID?
+59. What information is available about geographic bottom hole location coordinate quality check performed by?
+60. What information is available about geographic bottom hole location qualitative spatial accuracy type ID?
+61. What information is available about geographic bottom hole location quantitative accuracy band ID?
+62. What information is available about geographic bottom hole location spatial geometry type ID?
+63. What information is available about geographic bottom hole location spatial parameter type ID?
+64. What information is available about initial operator?
+65. What information is available about initial operator ID?
+66. What information is available about interest type ID?
+67. What information is available about is discoverable?
+68. What information is available about is extended load?
+69. What information is available about keywords?
+70. What information is available about kick off wellbore?
+71. What information is available about lineage assertions?
+72. What information is available about lineage assertions ID?
+73. What information is available about lineage assertions lineage relationship type?
+74. What information is available about marker names?
+75. What information is available about markers?
+76. What information is available about markers feature name?
+77. What information is available about markers feature type ID?
+78. What information is available about markers geological age?
+79. What information is available about markers interpretation ID?
+80. What information is available about markers marker ID?
+81. What information is available about markers marker interpreter?
+82. What information is available about markers marker measured depth?
+83. What information is available about markers marker name?
+84. What information is available about markers marker type ID?
+85. What information is available about markers missing?
+86. What information is available about mime type?
+87. What information is available about name?
+88. What information is available about name aliases?
+89. What information is available about name aliases alias name?
+90. What information is available about name aliases alias name type ID?
+91. What information is available about name aliases definition organisation ID?
+92. What information is available about number of pages?
+93. What information is available about operating environment ID?
+94. What information is available about outcome ID?
+95. What information is available about parent seismic trace ID?
+96. What information is available about parent wellbore ID?
+97. What information is available about primary material ID?
+98. What information is available about primary product type ID?
+99. What information is available about projected bottom hole location coordinate quality check performed by?
+100. What information is available about projected bottom hole location qualitative spatial accuracy type ID?
+101. What information is available about projected bottom hole location quantitative accuracy band ID?
+102. What information is available about projected bottom hole location spatial geometry type ID?
+103. What information is available about projected bottom hole location spatial parameter type ID?
+104. What information is available about prospect name?
+105. What information is available about region name?
+106. What information is available about resource curation status?
+107. What information is available about resource home region ID?
+108. What information is available about resource lifecycle status?
+109. What information is available about resource security classification?
+110. What information is available about role ID?
+111. What information is available about secondary product type ID?
+112. What information is available about show product type ID?
+113. What information is available about size?
+114. What information is available about source?
+115. What information is available about spatial area coordinate quality check performed by?
+116. What information is available about spatial area qualitative spatial accuracy type ID?
+117. What information is available about spatial area quantitative accuracy band ID?
+118. What information is available about spatial area spatial geometry type ID?
+119. What information is available about spatial area spatial parameter type ID?
+120. What information is available about spatial location coordinate quality check performed by?
+121. What information is available about spatial location qualitative spatial accuracy type ID?
+122. What information is available about spatial location quantitative accuracy band ID?
+123. What information is available about spatial location spatial geometry type ID?
+124. What information is available about spatial location spatial parameter type ID?
+125. What information is available about spatial location WGS84 coordinates coordinates?
+126. What information is available about spatial location WGS84 coordinates coordinates geometries?
+127. What information is available about spatial location WGS84 coordinates coordinates geometries coordinates?
+128. What information is available about spatial location WGS84 coordinates coordinates geometries type?
+129. What information is available about spatial location WGS84 coordinates coordinates type?
+130. What information is available about spatial point coordinate quality check performed by?
+131. What information is available about spatial point qualitative spatial accuracy type ID?
+132. What information is available about spatial point quantitative accuracy band ID?
+133. What information is available about spatial point spatial geometry type ID?
+134. What information is available about spatial point spatial parameter type ID?
+135. What information is available about status summary ID?
+136. What information is available about stratigraphic column ID?
+137. What information is available about stratigraphic column rank interpretation ID?
+138. What information is available about sub title?
+139. What information is available about submitter name?
+140. What information is available about summary?
+141. What information is available about table of contents?
+142. What information is available about target formation?
+143. What information is available about technical assurance ID?
+144. What information is available about technical assurance type ID?
+145. What information is available about technical assurances?
+146. What information is available about technical assurances comment?
+147. What information is available about technical assurances effective date?
+148. What information is available about technical assurances technical assurance type ID?
+149. What information is available about tertiary product type ID?
+150. What information is available about title?
+151. What information is available about trajectory type ID?
+152. What information is available about unique borehole identifier?
+153. What information is available about unique well identifier?
+154. What information is available about version creation reason?
+155. What information is available about vertical measurement vertical crs ID?
+156. What information is available about vertical measurement vertical measurement description?
+157. What information is available about vertical measurement vertical measurement path ID?
+158. What information is available about vertical measurement vertical measurement source ID?
+159. What information is available about vertical measurement vertical measurement type ID?
+160. What information is available about vertical measurement vertical measurement unit of measure ID?
+161. What information is available about vertical measurement vertical reference entity ID?
+162. What information is available about vertical measurement vertical reference ID?
+163. What information is available about vertical measurement wellbore true vertical depth trajectory ID?
+164. What information is available about vertical measurements?
+165. What information is available about vertical measurements rig ID?
+166. What information is available about vertical measurements vertical crs ID?
+167. What information is available about vertical measurements vertical measurement?
+168. What information is available about vertical measurements vertical measurement description?
+169. What information is available about vertical measurements vertical measurement ID?
+170. What information is available about vertical measurements vertical measurement path ID?
+171. What information is available about vertical measurements vertical measurement source ID?
+172. What information is available about vertical measurements vertical measurement type ID?
+173. What information is available about vertical measurements vertical measurement unit of measure ID?
+174. What information is available about vertical measurements vertical reference entity ID?
+175. What information is available about vertical measurements vertical reference ID?
+176. What information is available about vertical measurements wellbore true vertical depth trajectory ID?
+177. What information is available about virtual properties default location coordinate quality check performed by?
+178. What information is available about virtual properties default location is decimated?
+179. What information is available about virtual properties default location qualitative spatial accuracy type ID?
+180. What information is available about virtual properties default location quantitative accuracy band ID?
+181. What information is available about virtual properties default location spatial geometry type ID?
+182. What information is available about virtual properties default location spatial parameter type ID?
+183. What information is available about virtual properties default location WGS84 coordinates coordinates?
+184. What information is available about virtual properties default location WGS84 coordinates coordinates geometries?
+185. What information is available about virtual properties default location WGS84 coordinates coordinates geometries coordinates?
+186. What information is available about virtual properties default location WGS84 coordinates coordinates geometries type?
+187. What information is available about virtual properties default location WGS84 coordinates coordinates type?
+188. What information is available about virtual properties default name?
+189. What information is available about was business interest financial non operated?
+190. What information is available about was business interest financial operated?
+191. What information is available about was business interest obligatory?
+192. What information is available about was business interest technical?
+193. What information is available about well ID?
+194. What information is available about well log types?
+195. What information is available about well logs?
+196. What information is available about well name?
+197. What information is available about well status?
+198. What information is available about wellbore classification?
+199. What information is available about wellbore hydrocarbon type?
+200. What information is available about wellbore ID?
+201. What information is available about wellbore name?
+202. What information is available about wellbore phase?
+203. What information is available about wellbore reason ID?
+204. What information is available about wellbore situation?
+205. What information is available about wellbore status?
+206. What information is available about wellbore trajectory type?
+207. What information is available about wellbore trajectory type ID?
+208. What information is available about ID?
+209. What information is available about kind?
+210. What information is available about legal?
+211. What information is available about legal legaltags?
+212. What information is available about legal other relevant data countries?
+213. What information is available about legal status?
+214. What information is available about modify time?
+215. What information is available about modify user?
+216. What information is available about namespace?
+217. What information is available about source?
+218. What information is available about tags?
+219. What information is available about tags default total score?
+220. What information is available about tags qc validity?
+221. What information is available about tags quality score?
+222. What information is available about tags SLB data space ID e2f968e2 d943 471c 9de4 5400184db3aa?
+223. What information is available about tags SLB ingestion source file loading?
+224. What information is available about tags SLB submission job ID 20260326 000023?
+225. What information is available about tags SLB submission job ID 20260326 000024?
+226. What information is available about tags SLB submission job ID 20260326 000025?
+227. What information is available about tags SLB submission job ID 20260326 000026?
+228. What information is available about tags SLB submission job ID 20260326 000027?
+229. What information is available about tags SLB submission job ID 20260326 000028?
+230. What information is available about tags SLB submission job ID 20260326 000029?
+231. What information is available about tags SLB submission job ID 20260326 000030?
+232. What information is available about tags SLB submission job ID 20260326 000031?
+233. What information is available about tags SLB submission job ID 20260326 000032?
+234. What information is available about tags SLB submission job ID 20260326 000033?
+235. What information is available about tags SLB submission job ID 20260326 000034?
+236. What information is available about tags SLB submission job ID 20260326 000037?
+237. What information is available about tags SLB submission job ID 20260326 000038?
+238. What information is available about tags SLB submission job ID 20260326 000039?
+239. What information is available about tags SLB submission job ID 20260326 000040?
+240. What information is available about tags SLB submission job ID 20260326 000041?
+241. What information is available about tags SLB submission job ID 20260326 000042?
+242. What information is available about tags SLB submission job ID 20260326 000043?
+243. What information is available about tags SLB submission job ID 20260326 000044?
+244. What information is available about tags SLB submission job ID 20260326 000045?
+245. What information is available about tags SLB submission job ID 20260326 000046?
+246. What information is available about tags SLB submission job ID 20260326 000047?
+247. What information is available about tags SLB submission job ID 20260326 000051?
+248. What information is available about tags SLB submission job ID 20260326 000052?
+249. What information is available about tags SLB submission job ID 20260326 000054?
+250. What information is available about tags SLB submission job ID 20260326 000055?
+251. What information is available about tags SLB submission job ID 20260327 000040?
+252. What information is available about tags SLB submission job ID 20260327 000041?
+253. What information is available about tags SLB submission job ID 20260327 000042?
+254. What information is available about tags SLB submission job ID 20260327 000044?
+255. What information is available about tags SLB submission job ID 20260327 000045?
+256. What information is available about tags SLB submission job ID 20260327 000046?
+257. What information is available about tags SLB submission job ID 20260327 000047?
+258. What information is available about tags SLB submission job ID 20260327 000048?
+259. What information is available about tags SLB submission job ID 20260327 000049?
+260. What information is available about tags SLB submission job ID 20260327 000050?
+261. What information is available about tags SLB submission job ID 20260327 000051?
+262. What information is available about tags SLB submission job ID 20260327 000052?
+263. What information is available about tags SLB submission job ID 20260327 000053?
+264. What information is available about tags SLB submission job ID 20260327 000056?
+265. What information is available about tags SLB submission job ID 20260327 000058?
+266. What information is available about tags SLB submission job ID 20260327 000059?
+267. What information is available about tags SLB submission job ID 20260327 000060?
+268. What information is available about tags SLB submission job ID 20260327 000061?
+269. What information is available about tags SLB submission job ID 20260327 000065?
+270. What information is available about tags SLB submission job ID 20260327 000066?
+271. What information is available about tags SLB submission job ID 20260327 000073?
+272. What information is available about tags SLB submission job ID 20260327 000075?
+273. What information is available about tags SLB submission job ID 20260327 000077?
+274. What information is available about tags SLB submission job ID 20260327 000078?
+275. What information is available about tags SLB submission job ID 20260327 000079?
+276. What information is available about tags SLB submission job ID 20260327 000081?
+277. What information is available about tags SLB submission job ID 20260327 000082?
+278. What information is available about tags SLB submission job ID 20260327 000084?
+279. What information is available about tags SLB submission job ID 20260327 000087?
+280. What information is available about tags SLB submission job ID 20260327 000089?
+281. What information is available about tags SLB submission job ID 20260327 000090?
+282. What information is available about tags SLB submission job ID 20260327 000091?
+283. What information is available about tags SLB submission job ID 20260327 000092?
+284. What information is available about tags SLB submission job ID 20260327 000094?
+285. What information is available about tags SLB submission job ID 20260327 000095?
+286. What information is available about tags SLB submission job ID 20260327 000100?
+287. What information is available about tags SLB submission job ID 20260327 000101?
+288. What information is available about tags SLB submission job ID 20260327 000102?
+289. What information is available about tags SLB submission job ID 20260327 000103?
+290. What information is available about tags SLB submission job ID 20260327 000104?
+291. What information is available about tags SLB submission job ID 20260327 000105?
+292. What information is available about tags SLB submission job ID 20260327 000106?
+293. What information is available about tags SLB submission job ID 20260327 000107?
+294. What information is available about tags SLB submission job ID 20260327 000108?
+295. What information is available about tags SLB submission job ID 20260327 000109?
+296. What information is available about tags SLB submission job ID 20260327 000110?
+297. What information is available about tags SLB submission job ID 20260327 000111?
+298. What information is available about tags SLB submission job ID 20260327 000112?
+299. What information is available about tags SLB submission job ID 20260327 000113?
+300. What information is available about tags SLB submission job ID 20260327 000116?
+301. What information is available about tags SLB submission job ID 20260327 000117?
+302. What information is available about tags SLB submission job ID 20260327 000118?
+303. What information is available about tags SLB submission job ID 20260327 000119?
+304. What information is available about tags SLB submission job ID 20260327 000120?
+305. What information is available about tags SLB submission job ID 20260327 000121?
+306. What information is available about tags SLB submission job ID 20260327 000122?
+307. What information is available about tags SLB submission job ID 20260327 000123?
+308. What information is available about tags SLB submission job ID 20260327 000124?
+309. What information is available about tags SLB submission job ID 20260327 000129?
+310. What information is available about tags SLB submission job ID 20260327 000130?
+311. What information is available about tags SLB submission job ID 20260327 000131?
+312. What information is available about tags SLB submission job ID 20260327 000137?
+313. What information is available about tags SLB submission job ID 20260327 000138?
+314. What information is available about tags SLB submission job ID 20260327 000139?
+315. What information is available about tags SLB submission job ID 20260327 000140?
+316. What information is available about tags SLB submission job ID 20260327 000141?
+317. What information is available about tags SLB submission job ID 20260327 000142?
+318. What information is available about tags SLB submission job ID 20260327 000143?
+319. What information is available about tags SLB submission job ID 20260327 000144?
+320. What information is available about tags SLB submission job ID 20260327 000145?
+321. What information is available about tags SLB submission job ID 20260327 000146?
+322. What information is available about tags SLB submission job ID 20260327 000149?
+323. What information is available about tags SLB submission job ID 20260327 000150?
+324. What information is available about tags SLB submission job ID 20260327 000151?
+325. What information is available about tags SLB submission job ID 20260327 000152?
+326. What information is available about tags SLB submission job ID 20260327 000153?
+327. What information is available about tags SLB submission job ID 20260327 000154?
+328. What information is available about tags SLB submission job ID 20260327 000155?
+329. What information is available about tags SLB submission job ID 20260327 000157?
+330. What information is available about tags SLB submission job ID 20260327 000158?
+331. What information is available about tags SLB submission job ID 20260327 000159?
+332. What information is available about tags SLB submission job ID 20260327 000160?
+333. What information is available about tags SLB submission job ID 20260327 000162?
+334. What information is available about tags SLB submission job ID 20260327 000163?
+335. What information is available about tags SLB submission job ID 20260327 000164?
+336. What information is available about tags SLB submission job ID 20260327 000165?
+337. What information is available about tags SLB submission job ID 20260327 000166?
+338. What information is available about tags SLB submission job ID 20260327 000167?
+339. What information is available about tags SLB submission job ID 20260327 000168?
+340. What information is available about tags SLB submission job ID 20260327 000169?
+341. What information is available about tags SLB submission job ID 20260327 000170?
+342. What information is available about tags SLB submission job ID 20260327 000171?
+343. What information is available about tags SLB submission job ID 20260327 000172?
+344. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 0b9d85d6 05db 4be9 a6fd 9b7c38e88d9c?
+345. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 2f99909a 6c3a 4323 a590 fbe8a9700d2a?
+346. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 54ad171f 42cb 4bfd b743 09105a0f9296?
+347. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 5c041d28 ffbc 4204 9c66 1df179183309?
+348. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 74fe27da c8e4 440a 816a 3dd91c1666f3?
+349. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 7536ec46 cdcf 4f5b a0fd 5fdf7a7d7d00?
+350. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 78d5897d d71f 4339 a0a2 fa24b4d0e738?
+351. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 7f5a9e30 4846 4de7 872d ec9f2ac1e5d7?
+352. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 8154fca8 f393 4b01 be09 fec1d1caf56b?
+353. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection 83de5153 64a1 49cc 902d 6a45bf7e713e?
+354. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection a1b077a8 ff14 4891 a8dd bb5340760af8?
+355. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection b2e7127c adb0 49ad bc76 45fc817adc6c?
+356. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection bf08ca16 5a43 4034 9d15 e98a25d30548?
+357. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection ea456786 c518 46c2 9594 3b12865232ca?
+358. What information is available about tags collection ID sandbox weu des prod testing e work product component persisted collection ec5bd869 80ed 4ce9 8554 0a5db68af6d3?
+359. What information is available about tags dataflow ID?
+360. What information is available about tags manual edit?
+361. What information is available about tags normalized kind?
+362. What information is available about type?
+363. What information is available about version?
