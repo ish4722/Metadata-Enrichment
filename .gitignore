@@ -1,0 +1,4 @@
+# Add these lines to .gitignore
+echo "__pycache__/" >> .gitignore
+echo "*.pyc" >> .gitignore
+echo "sauth_token.py" >> .gitignore
