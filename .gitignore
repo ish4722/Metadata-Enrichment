@@ -1,3 +1,4 @@
 sauth_token.py
 __pycache__/
 *.pyc
+rag_index.pkl
