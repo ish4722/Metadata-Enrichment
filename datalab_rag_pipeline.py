@@ -8,6 +8,13 @@ This script:
 4. Builds a retrieval index using TF-IDF embeddings.
 5. Supports query-time retrieval and optional LLM answer generation.
 
+Environment Variables:
+  LLM_MODEL              - LLM model name (default: gpt-5-mini)
+  LLM_BASE_URL           - LLM service base URL
+  SLB_PARTITION_ID       - SLB partition ID for API headers
+
+Copy .env.example to .env and update with your credentials.
+
 Usage examples:
   python datalab_rag_pipeline.py build \
     --input "datalab-output-PR3216.pdf (1).json" \
@@ -34,6 +41,14 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    dotenv_available = False
+else:
+    dotenv_available = True
+    load_dotenv()
 
 try:
     from langchain_openai import ChatOpenAI
@@ -309,11 +324,16 @@ def get_llm() -> Optional[ChatOpenAI]:
     token = get_token()
     if token.startswith("Bearer "):
         token = token[len("Bearer ") :]
+    
+    model = os.getenv("LLM_MODEL", "gpt-5-mini")
+    base_url = os.getenv("LLM_BASE_URL", "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1")
+    partition_id = os.getenv("SLB_PARTITION_ID", "sandbox-weu-des-prod-testing-e")
+    
     return ChatOpenAI(
-        model="gpt-4o",
-        base_url="https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1",
+        model=model,
+        base_url=base_url,
         api_key=token,
-        default_headers={"slb-partition-id": "sandbox-weu-des-prod-testing-e"},
+        default_headers={"slb-partition-id": partition_id},
     )
 
 
@@ -408,7 +428,7 @@ def query_pipeline(index_path: str, query: str, top_k: int) -> None:
 
 def parse_args() -> argparse.Namespace:
     if len(sys.argv) == 1:
-        return argparse.Namespace(command="interactive", index_output="rag_index.pkl", top_k=5)
+        return argparse.Namespace(command="interactive", index_output="rag_index.pkl", top_k=10)
 
     parser = argparse.ArgumentParser(description="Build and query a RAG pipeline from extracted PDF JSON.")
     subparsers = parser.add_subparsers(dest="command")
@@ -423,8 +443,8 @@ def parse_args() -> argparse.Namespace:
     query = subparsers.add_parser("query", help="Query the retrieval index")
     query.add_argument("--index-output", default="rag_index.pkl", help="Path to retrieval index pickle")
     query.add_argument("query", help="Search query")
-    query.add_argument("--top-k", type=int, default=5, help="Number of top chunks to retrieve")
-
+    #query.add_argument("--top-k", type=int, default=10, help="Number of top chunks to retrieve")
+    query.add_argument(top_k=10)
     return parser.parse_args()
 
 

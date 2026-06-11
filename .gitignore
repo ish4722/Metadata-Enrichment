@@ -2,3 +2,11 @@ sauth_token.py
 __pycache__/
 *.pyc
 rag_index.pkl
+chunker.py
+extractor.py
+json_chunk.py
+output_builder.py
+run_pipeline.py
+validator.py
+.env.example
+jina-v3/
