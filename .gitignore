@@ -10,3 +10,4 @@ run_pipeline.py
 validator.py
 .env.example
 jina-v3/
+rag_index_iteration1.pkl

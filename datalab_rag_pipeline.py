@@ -19,12 +19,12 @@ Usage examples:
   python datalab_rag_pipeline.py build \
     --input "datalab-output-PR3216.pdf (1).json" \
     --chunks-output useful_chunks.jsonl \
-    --index-output rag_index.pkl
+    --index-output rag_index_iteration1.pkl
 
   python datalab_rag_pipeline.py query \
-    --index-output rag_index.pkl \
+    --index-output rag_index_iteration1.pkl \
     --query "What is the operator name?" \
-    --top-k 5
+    --top-k 10
 """
 
 import argparse
@@ -428,7 +428,7 @@ def query_pipeline(index_path: str, query: str, top_k: int) -> None:
 
 def parse_args() -> argparse.Namespace:
     if len(sys.argv) == 1:
-        return argparse.Namespace(command="interactive", index_output="rag_index.pkl", top_k=10)
+        return argparse.Namespace(command="interactive", index_output="rag_index_iteration1.pkl", top_k=10)
 
     parser = argparse.ArgumentParser(description="Build and query a RAG pipeline from extracted PDF JSON.")
     subparsers = parser.add_subparsers(dest="command")
@@ -436,12 +436,12 @@ def parse_args() -> argparse.Namespace:
     build = subparsers.add_parser("build", help="Build chunks and index from extracted JSON")
     build.add_argument("--input", required=True, help="Path to extracted JSON file")
     build.add_argument("--chunks-output", default="useful_chunks.jsonl", help="Output JSONL file for chunks")
-    build.add_argument("--index-output", default="rag_index.pkl", help="Output pickle file for retrieval index")
+    build.add_argument("--index-output", default="rag_index_iteration1.pkl", help="Output pickle file for retrieval index")
     build.add_argument("--chunk-size", type=int, default=800, help="Maximum chunk size in words")
     build.add_argument("--overlap", type=int, default=200, help="Chunk overlap in words")
 
     query = subparsers.add_parser("query", help="Query the retrieval index")
-    query.add_argument("--index-output", default="rag_index.pkl", help="Path to retrieval index pickle")
+    query.add_argument("--index-output", default="rag_index_iteration1.pkl", help="Path to retrieval index pickle")
     query.add_argument("query", help="Search query")
     #query.add_argument("--top-k", type=int, default=10, help="Number of top chunks to retrieve")
     query.add_argument(top_k=10)
