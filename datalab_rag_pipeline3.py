@@ -414,7 +414,7 @@ def get_llm() -> Optional["ChatOpenAI"]:
     if token.startswith("Bearer "):
         token = token[len("Bearer "):]
 
-    model = os.getenv("LLM_MODEL", "gpt-5-mini")
+    model = os.getenv("LLM_MODEL", "gpt-5.2")
     base_url = os.getenv(
         "LLM_BASE_URL",
         "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1",
@@ -562,8 +562,16 @@ def query_pipeline(index_path: str, query: str, top_k: int) -> None:
 
     # Save pages-sent-to-LLM file
     safe_query = re.sub(r"[^\w\s-]", "", query)[:50].strip().replace(" ", "_")
-    pages_output_path = f"pages_sent_to_llm_{safe_query}.json"
-    save_pages_sent_to_llm(full_pages, query, pages_output_path)
+    from pathlib import Path
+
+    BASE_DIR = Path(__file__).resolve().parent
+
+    queries_dir = BASE_DIR / "queries"
+    queries_dir.mkdir(exist_ok=True)
+
+    pages_output_path = queries_dir / f"pages_sent_to_llm_{safe_query}.json"
+
+    save_pages_sent_to_llm(full_pages, query, str(pages_output_path))
 
     if HAS_LLM:
         print("\nGenerating final answer with LLM...")

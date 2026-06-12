@@ -896,7 +896,7 @@ def get_llm() -> Optional[Any]:
     if token.startswith("Bearer "):
         token = token[len("Bearer "):]
     return ChatOpenAI(
-        model          = "gpt-4o-mini",
+        model          = "gpt-5.2",
         base_url       = "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1",
         api_key        = token,
         default_headers= {"slb-partition-id": "sandbox-weu-des-prod-testing-e"},
@@ -931,7 +931,7 @@ def make_prompt(
         "You are an expert retrieval assistant for oil and gas reports. "
         "Use ONLY the provided page excerpts and cite the source page for every answer. "
         "If the answer is not in the excerpts, say the information is unavailable in the document.\n\n"
-        f"{history_block}"
+        # f"{history_block}"
         f"Question: {query}\n\n"
         "Relevant page excerpts:\n"
         f"{context}\n\n"
