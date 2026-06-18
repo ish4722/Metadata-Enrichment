@@ -14,3 +14,4 @@ rag_index_iteration1.pkl
 pdfs/
 matched_json/
 pdf_json_pairs.txt
+datalab-output/

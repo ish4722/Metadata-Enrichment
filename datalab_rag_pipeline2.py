@@ -49,6 +49,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+import rag_evaluation
+
 # ── SSL fix for corporate proxy / self-signed cert environments ───────────────
 # Applied before any HuggingFace / requests / httpx import.
 
@@ -1112,6 +1114,60 @@ def interactive_query_loop(index_path: str, top_k: int) -> None:
 # CLI
 # ══════════════════════════════════════════════════════════════════════════════
 
+def evaluate_pipeline(
+    input_path:        str,
+    queries_path:      str,
+    ground_truth_path: str,
+    top_k:             int,
+    chunk_size:        int,
+    overlap:           int,
+    model_path:        str = None,
+    metrics_output:    Optional[str] = None,
+) -> None:
+    """Adapter that wires this pipeline's steps into the shared evaluation driver."""
+    llm = get_llm() if HAS_LLM else None
+    if llm is None:
+        print("LLM unavailable: accuracy will be measured against retrieved chunks only.")
+
+    def build_index(useful: List[Chunk]) -> Dict[str, Any]:
+        preferred = _resolve_model_path(model_path)
+        backend   = EmbeddingBackend(preferred_model=preferred)
+        index     = build_retrieval_index(useful, backend)
+        return {"index": index, "chunks": useful}
+
+    build_steps = [
+        ("1. Load JSON",          load_extracted_json),
+        ("2. Merge (section)",    merge_blocks_by_section),
+        ("3. Merge (cross-page)", merge_across_pages),
+        ("4. Chunking",           lambda c: build_useful_chunks(c, chunk_size=chunk_size, overlap=overlap)),
+        ("5. Build index",        build_index),
+    ]
+
+    def retrieve_fn(ctx: Dict[str, Any], query: str, k: int):
+        matches        = retrieve_top_chunks(query, ctx["index"], top_k=k)
+        matches        = rerank(query, matches, top_k=RERANK_TOP_K)
+        retrieved_text = "\n".join(c.text for c, _ in matches)
+        return matches, retrieved_text
+
+    def answer_fn(ctx: Dict[str, Any], question: str, matches):
+        if llm is None or not matches:
+            return None
+        prompt = make_prompt(question, matches, ctx["chunks"])
+        return rag_evaluation.invoke_llm_with_usage(llm, prompt)
+
+    rag_evaluation.run_evaluation(
+        input_path        = input_path,
+        queries_path      = queries_path,
+        ground_truth_path = ground_truth_path,
+        top_k             = top_k,
+        build_steps       = build_steps,
+        retrieve_fn       = retrieve_fn,
+        answer_fn         = answer_fn if llm is not None else None,
+        metrics_output    = metrics_output,
+        pipeline_name     = "datalab_rag_pipeline2 (hybrid + rerank)",
+    )
+
+
 def parse_args() -> argparse.Namespace:
     # No sub-command → interactive mode
     if len(sys.argv) == 1:
@@ -1151,10 +1207,22 @@ def parse_args() -> argparse.Namespace:
     ip.add_argument("--index-output", default="rag_index.pkl", help="Path to index pickle")
     ip.add_argument("--top-k",        type=int, default=DEFAULT_TOP_K)
 
+    # ── evaluate ───────────────────────────────────────────────────────────────
+    ev = sub.add_parser("evaluate", help="Run the pipeline and report per-step metrics")
+    ev.add_argument("--input",          required=True,                   help="Path to extracted datalab JSON file")
+    ev.add_argument("--queries",        default="queries.txt",           help="Path to the queries file")
+    ev.add_argument("--ground-truth",   required=True,                   help="Path to the matched JSON file with ground-truth values")
+    ev.add_argument("--top-k",          type=int, default=DEFAULT_TOP_K, help="Candidates to retrieve per query")
+    ev.add_argument("--chunk-size",     type=int, default=800,           help="Max chunk size in words")
+    ev.add_argument("--overlap",        type=int, default=200,           help="Chunk overlap in words")
+    ev.add_argument("--model-path",     default=None,                    help="Path to local Jina v3 model folder")
+    ev.add_argument("--metrics-output", default=None,                    help="Optional path to save metrics as JSON")
+
     return parser.parse_args()
 
 
 def main() -> None:
+    rag_evaluation.configure_utf8_stdout()
     args = parse_args()
 
     if args.command == "build":
@@ -1181,6 +1249,18 @@ def main() -> None:
         interactive_query_loop(
             index_path = args.index_output,
             top_k      = args.top_k,
+        )
+
+    elif args.command == "evaluate":
+        evaluate_pipeline(
+            input_path        = args.input,
+            queries_path      = args.queries,
+            ground_truth_path = args.ground_truth,
+            top_k             = args.top_k,
+            chunk_size        = args.chunk_size,
+            overlap           = args.overlap,
+            model_path        = args.model_path,
+            metrics_output    = args.metrics_output,
         )
 
     else:

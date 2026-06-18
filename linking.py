@@ -25,6 +25,8 @@ pip install pandas openpyxl
 Then edit the CONFIGURATION block below to point at your real folders/file.
 """
 
+
+"We did linking of pdfs from json then used json analyser to find out the missing keys and now we will make make schema for queries "
 import os
 import re
 import json

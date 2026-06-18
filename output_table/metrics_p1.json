@@ -1,0 +1,102 @@
+{
+  "pipeline": "datalab_rag_pipeline (TF-IDF)",
+  "input": "datalab-output/datalab-output-PR3216.pdf (1).json",
+  "queries": "queries.txt",
+  "ground_truth": "matched_json/PR3216.json",
+  "steps": [
+    {
+      "step": "1. Load JSON",
+      "cost_usd": 0.0,
+      "tokens": 0,
+      "accuracy": null,
+      "time_s": 0.2246646999847144,
+      "peak_mem_mb": 46.992366790771484
+    },
+    {
+      "step": "2. Merge blocks",
+      "cost_usd": 0.0,
+      "tokens": 0,
+      "accuracy": null,
+      "time_s": 0.007336999988183379,
+      "peak_mem_mb": 0.4976177215576172
+    },
+    {
+      "step": "3. Chunking",
+      "cost_usd": 0.0,
+      "tokens": 0,
+      "accuracy": null,
+      "time_s": 0.018889800063334405,
+      "peak_mem_mb": 0.5708723068237305
+    },
+    {
+      "step": "4. Build index",
+      "cost_usd": 0.0,
+      "tokens": 0,
+      "accuracy": null,
+      "time_s": 0.10224169993307441,
+      "peak_mem_mb": 1.6180925369262695
+    },
+    {
+      "step": "5. Retrieval",
+      "cost_usd": 0.0,
+      "tokens": 0,
+      "accuracy": 0.5,
+      "time_s": 0.012105500092729926,
+      "peak_mem_mb": 0.5147895812988281
+    },
+    {
+      "step": "6. LLM generation",
+      "cost_usd": 0.0020772,
+      "tokens": 7944,
+      "accuracy": 0.5,
+      "time_s": 24.514964299858548,
+      "peak_mem_mb": 0.5501031875610352
+    },
+    {
+      "step": "TOTAL",
+      "cost_usd": 0.0020772,
+      "tokens": 7944,
+      "accuracy": 0.5,
+      "time_s": 24.880202999920584,
+      "peak_mem_mb": 46.992366790771484
+    }
+  ],
+  "per_query": [
+    {
+      "label": "lat+long",
+      "question": "What is the geographic location of this oil and gas facility based on its WGS84 coordinates?",
+      "ground_truth": "-39.2652419, 174.3405856",
+      "retrieval_hit": true,
+      "llm_hit": true,
+      "answer": "The report gives the well location as 39°16'01.20\" S, 174°20'25.38\" E (NZGD1949) — i.e. 39.266999° S, 174.340382° E (see pages 13 and 95). The file does not provide WGS84 coordinates or a WGS84 conversion (information unavailable in the document). [source: page 13; page 95]",
+      "tokens": 2837
+    },
+    {
+      "label": "openv ID",
+      "question": "What is the operating environment of this oil and gas asset?",
+      "ground_truth": "Onshore",
+      "retrieval_hit": true,
+      "llm_hit": true,
+      "answer": "- Asset/operator: Ahuroa South B-1 (Ahuroa South B-1 ST-1), operated by Swift Energy New Zealand Ltd (source: page 0).  \n- Location/setting: In the Taranaki Basin on the west coast of New Zealand’s North Island (subsurface basin that is largely offshore — ~90% offshore) (source: page 13).  \n- Tectonic/structural environment: Structurally diverse basin at the convergent plate boundary between the Australian and Pacific Plates, with active fault zones (Taranaki/Tarata Fault trends) and an Eastern Mobile Belt (Taranaki Graben) / Western Stable Platform split (source: pages 13–14).  \n- Basin characteristics: Subsurface sedimentary basin with up to ~9 km of sediment (Cretaceous to Recent) — onshore portion beneath Quaternary volcanic/alluvial cover (source: page 13).\n\nIf you need a different definition of “operating environment” (e.g., onshore vs offshore at the specific well location), the exact onshore/offshore status of this specific well is not explicitly stated in the provided excerpts.",
+      "tokens": 3195
+    },
+    {
+      "label": "facilityevent spud date",
+      "question": "When was the well or facility spudded?",
+      "ground_truth": "2005-11-11",
+      "retrieval_hit": false,
+      "llm_hit": false,
+      "answer": "The spud date is not stated in the provided excerpts. The supplied pages reviewed (e.g., pages 26, 35–39, 65–67, and 118) do not contain the spud information. (Source pages reviewed: 26, 35, 36, 37, 38, 39, 65, 66, 67, 118)",
+      "tokens": 753
+    },
+    {
+      "label": "facility name",
+      "question": "What is the name or identifier of this facility?",
+      "ground_truth": "Ahuroa South B-1 ST1",
+      "retrieval_hit": false,
+      "llm_hit": false,
+      "answer": "The facility is identified as the well \"Ahuroa South B-1\" (Well: Ahuroa South B-1). Source: page 160 (also referenced on pages 161–162).",
+      "tokens": 1159
+    }
+  ]
+}

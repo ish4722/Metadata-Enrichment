@@ -44,6 +44,8 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+import rag_evaluation
+
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -586,6 +588,65 @@ def query_pipeline(index_path: str, query: str, top_k: int) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Evaluation  (per-step metrics via shared rag_evaluation module)
+# ---------------------------------------------------------------------------
+
+def evaluate_pipeline(
+    input_path: str,
+    queries_path: str,
+    ground_truth_path: str,
+    top_k: int,
+    chunk_size: int,
+    overlap: int,
+    metrics_output: Optional[str] = None,
+) -> None:
+    """Adapter that wires this pipeline's full-page steps into the shared driver."""
+    llm = get_llm() if HAS_LLM else None
+    if llm is None:
+        print("LLM unavailable: accuracy will be measured against retrieved pages only.")
+
+    def build_index(useful_chunks: List[Chunk]) -> Dict[str, Any]:
+        vectorizer, matrix = build_vector_store(useful_chunks)
+        return {
+            "chunks": useful_chunks,
+            "vectorizer": vectorizer,
+            "matrix": matrix,
+            "page_index": build_page_index(useful_chunks),
+        }
+
+    build_steps = [
+        ("1. Load JSON", load_extracted_json),
+        ("2. Merge blocks", merge_blocks_by_section),
+        ("3. Chunking", lambda c: build_useful_chunks(c, chunk_size=chunk_size, overlap=overlap)),
+        ("4. Build index", build_index),
+    ]
+
+    def retrieve_fn(ctx: Dict[str, Any], query: str, k: int):
+        matches = retrieve_top_chunks(query, ctx["vectorizer"], ctx["matrix"], ctx["chunks"], top_k=k)
+        full_pages = get_full_pages_for_matches(matches, ctx["page_index"])
+        retrieved_text = "\n".join(page["full_text"] for page in full_pages)
+        return full_pages, retrieved_text
+
+    def answer_fn(ctx: Dict[str, Any], question: str, full_pages):
+        if llm is None or not full_pages:
+            return None
+        prompt = make_prompt_from_pages(question, full_pages)
+        return rag_evaluation.invoke_llm_with_usage(llm, prompt)
+
+    rag_evaluation.run_evaluation(
+        input_path=input_path,
+        queries_path=queries_path,
+        ground_truth_path=ground_truth_path,
+        top_k=top_k,
+        build_steps=build_steps,
+        retrieve_fn=retrieve_fn,
+        answer_fn=answer_fn if llm is not None else None,
+        metrics_output=metrics_output,
+        pipeline_name="datalab_rag_pipeline3 (full-page context)",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Argument parsing  (fixed)
 # ---------------------------------------------------------------------------
 
@@ -614,10 +675,20 @@ def parse_args() -> argparse.Namespace:
     qp.add_argument("query", help="Search query")
     qp.add_argument("--top-k", type=int, default=10, help="Number of top chunks to retrieve")
 
+    ev = subparsers.add_parser("evaluate", help="Run the pipeline and report per-step metrics")
+    ev.add_argument("--input", required=True, help="Path to extracted datalab JSON file")
+    ev.add_argument("--queries", default="queries.txt", help="Path to the queries file")
+    ev.add_argument("--ground-truth", required=True, help="Path to the matched JSON file with ground-truth values")
+    ev.add_argument("--top-k", type=int, default=10, help="Number of top chunks to retrieve per query")
+    ev.add_argument("--chunk-size", type=int, default=800, help="Maximum chunk size in words")
+    ev.add_argument("--overlap", type=int, default=200, help="Chunk overlap in words")
+    ev.add_argument("--metrics-output", default=None, help="Optional path to save metrics as JSON")
+
     return parser.parse_args()
 
 
 def main() -> None:
+    rag_evaluation.configure_utf8_stdout()
     args = parse_args()
 
     if args.command == "build":
@@ -633,6 +704,16 @@ def main() -> None:
             index_path=args.index_output,
             query=args.query,
             top_k=args.top_k,
+        )
+    elif args.command == "evaluate":
+        evaluate_pipeline(
+            input_path=args.input,
+            queries_path=args.queries,
+            ground_truth_path=args.ground_truth,
+            top_k=args.top_k,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+            metrics_output=args.metrics_output,
         )
     elif args.command == "interactive":
         interactive_query_loop(

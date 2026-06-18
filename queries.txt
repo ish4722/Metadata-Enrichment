@@ -1,0 +1,27 @@
+lat+long:
+What is the geographic location of this oil and gas facility based on its WGS84 coordinates?
+ 
+WGS84 coordinates represent the latitude and longitude of the asset, well, facility, or operational location used for spatial mapping and geographic identification.
+ 
+Keywords: WGS84, coordinates, latitude, longitude, geospatial, location, well location, facility location, mapping, GIS, spatial data, asset position
+ 
+openv ID:
+What is the operating environment of this oil and gas asset?
+ 
+Operating environment identifies the physical setting where operations occur, such as onshore, offshore, deepwater, arctic, or other production environments.
+ 
+Keywords: operating environment, onshore, offshore, deepwater, production environment, asset classification, field operations, facility type, well environment, exploration, development, oil and gas operations
+ 
+facilityevent spud date:
+When was the well or facility spudded?
+ 
+The spud date records when drilling operations officially commenced, marking the start of well construction activities.
+ 
+Keywords: spud date, drilling start, well construction, drilling operations, well lifecycle, drilling commencement, rig mobilization, exploration well, development well, facility event, drilling history
+ 
+facility name:
+What is the name or identifier of this facility?
+ 
+Facility name is the primary business identifier used to distinguish a specific well, platform, production facility, or operational asset.
+ 
+Keywords: facility name, asset name, well name, facility identifier, asset identifier, platform name, production facility, oilfield asset, site name, facility reference
