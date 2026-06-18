@@ -599,6 +599,10 @@ def evaluate_pipeline(
     chunk_size: int,
     overlap: int,
     metrics_output: Optional[str] = None,
+    cache_root: Optional[str] = rag_evaluation.DEFAULT_CACHE_ROOT,
+    use_cache: bool = True,
+    force_rebuild: bool = False,
+    use_judge: bool = True,
 ) -> None:
     """Adapter that wires this pipeline's full-page steps into the shared driver."""
     llm = get_llm() if HAS_LLM else None
@@ -633,6 +637,9 @@ def evaluate_pipeline(
         prompt = make_prompt_from_pages(question, full_pages)
         return rag_evaluation.invoke_llm_with_usage(llm, prompt)
 
+    def judge_fn(question: str, ground_truth: str, answer: str):
+        return rag_evaluation.llm_judge_match(llm, question, ground_truth, answer)
+
     rag_evaluation.run_evaluation(
         input_path=input_path,
         queries_path=queries_path,
@@ -641,8 +648,15 @@ def evaluate_pipeline(
         build_steps=build_steps,
         retrieve_fn=retrieve_fn,
         answer_fn=answer_fn if llm is not None else None,
+        judge_fn=judge_fn if (llm is not None and use_judge) else None,
         metrics_output=metrics_output,
         pipeline_name="datalab_rag_pipeline3 (full-page context)",
+        backend_name="tfidf_fullpage",
+        chunk_size=chunk_size,
+        overlap=overlap,
+        cache_root=cache_root,
+        use_cache=use_cache,
+        force_rebuild=force_rebuild,
     )
 
 
@@ -683,6 +697,10 @@ def parse_args() -> argparse.Namespace:
     ev.add_argument("--chunk-size", type=int, default=800, help="Maximum chunk size in words")
     ev.add_argument("--overlap", type=int, default=200, help="Chunk overlap in words")
     ev.add_argument("--metrics-output", default=None, help="Optional path to save metrics as JSON")
+    ev.add_argument("--cache-root", default=rag_evaluation.DEFAULT_CACHE_ROOT, help="Root folder for cached indexes (per-backend subfolders)")
+    ev.add_argument("--no-cache", action="store_true", help="Disable reading/writing the index cache")
+    ev.add_argument("--rebuild", action="store_true", help="Ignore any cached index and rebuild it")
+    ev.add_argument("--no-judge", action="store_true", help="Disable the LLM judge (use literal token matching for accuracy)")
 
     return parser.parse_args()
 
@@ -714,6 +732,10 @@ def main() -> None:
             chunk_size=args.chunk_size,
             overlap=args.overlap,
             metrics_output=args.metrics_output,
+            cache_root=args.cache_root,
+            use_cache=not args.no_cache,
+            force_rebuild=args.rebuild,
+            use_judge=not args.no_judge,
         )
     elif args.command == "interactive":
         interactive_query_loop(
