@@ -1,0 +1,20 @@
+# Core
+numpy
+scikit-learn
+
+# Vector store
+faiss-cpu
+
+# Sparse / hybrid retrieval
+rank-bm25
+
+# Dense embeddings + reranker (optional but recommended)
+torch
+transformers
+sentence-transformers
+
+# LLM (internal SLB stack)
+langchain-openai
+
+# Environment
+python-dotenv

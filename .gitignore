@@ -1,7 +1,6 @@
 sauth_token.py
 __pycache__/
 *.pyc
-rag_index.pkl
 chunker.py
 extractor.py
 json_chunk.py
@@ -10,9 +9,10 @@ run_pipeline.py
 validator.py
 .env.example
 jina-v3/
-rag_index_iteration1.pkl
 pdfs/
 matched_json/
 pdf_json_pairs.txt
 datalab-output/
 index_cache/
+starter.py
+output_table/
