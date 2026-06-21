@@ -84,14 +84,43 @@ def flatten_blocks(
     return blocks
 
 
+def _extraction_root(data: Any) -> Dict[str, Any]:
+    """Return the node whose ``children`` are the document pages.
+
+    Supports two datalab layouts:
+      * legacy:  the page tree is at the top level (``data["children"]``).
+      * current: the tree is nested under an API wrapper
+        (``data["result"]["json"]["children"]``).
+    """
+    if not isinstance(data, dict):
+        return {}
+    if isinstance(data.get("children"), list):
+        return data
+
+    result = data.get("result")
+    if isinstance(result, dict):
+        nested = result.get("json")
+        if isinstance(nested, dict) and isinstance(nested.get("children"), list):
+            return nested
+        if isinstance(result.get("children"), list):
+            return result
+
+    nested = data.get("json")
+    if isinstance(nested, dict) and isinstance(nested.get("children"), list):
+        return nested
+
+    return data
+
+
 def load_extracted_json(path: str) -> List[Chunk]:
     """Load the extraction JSON file and return a flat list of Chunks."""
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    root = _extraction_root(data)
     source = Path(path).name
     chunks: List[Chunk] = []
-    for page_node in data.get("children", []):
+    for page_node in root.get("children", []):
         page_index = page_node.get("page", -1)
         for chunk in flatten_blocks(page_node, page=page_index, section_titles=[]):
             chunk.source = source

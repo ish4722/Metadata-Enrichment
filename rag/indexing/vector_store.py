@@ -111,6 +111,13 @@ def build_vector_store(
         raise RuntimeError("faiss is not installed. Run: pip install faiss-cpu")
 
     texts = [c.text for c in chunks]
+    if not texts:
+        raise RuntimeError(
+            "No text chunks were produced from the document - nothing to embed. "
+            "This usually means the extraction JSON layout was not recognised by "
+            "rag/indexing/loader.py (expected page nodes under top-level 'children' "
+            "or 'result.json.children'). Check the input file format."
+        )
     print(f"Embedding {len(texts)} chunks with [{backend.backend_name}] ...")
     mat = backend.fit_transform(texts).astype(np.float32)
     dim = int(mat.shape[1]) if mat.ndim == 2 else 0

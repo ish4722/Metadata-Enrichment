@@ -62,7 +62,7 @@ class RagConfig:
     top_k: int = 10
 
     # ── reranker  ← SWAP RERANKER HERE ──────────────────────────────────────
-    use_reranker: bool = False
+    use_reranker: bool = True
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_top_k: int = 10
 
