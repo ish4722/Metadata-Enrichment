@@ -24,12 +24,16 @@ def chunks_from_json(input_path: str, config: RagConfig) -> List[Chunk]:
     base = load_extracted_json(input_path)
     print(f"  {len(base)} raw text blocks extracted")
 
-    merged = merge_blocks_by_section(base)
-    print(f"  {len(merged)} chunks after within-page section merge")
+    if config.merge_sections:
+        merged = merge_blocks_by_section(base)
+        print(f"  {len(merged)} chunks after within-page section merge")
 
-    if config.merge_across_pages:
-        merged = merge_across_pages(merged)
-        print(f"  {len(merged)} chunks after cross-page merge")
+        if config.merge_across_pages:
+            merged = merge_across_pages(merged)
+            print(f"  {len(merged)} chunks after cross-page merge")
+    else:
+        merged = base
+        print("  naive mode: skipping section merge")
 
     useful = build_useful_chunks(merged, chunk_size=config.chunk_size, overlap=config.overlap)
     print(f"  {len(useful)} final retrieval chunks")
@@ -39,7 +43,12 @@ def chunks_from_json(input_path: str, config: RagConfig) -> List[Chunk]:
 def make_backend(config: RagConfig) -> EmbeddingBackend:
     """Construct the embedding backend selected in config."""
     preferred = config.model_path or config.resolved_embedding_model
-    return EmbeddingBackend(preferred_model=preferred)
+    return EmbeddingBackend(
+        preferred_model=preferred,
+        openai_model=config.openai_embedding_model,
+        openai_base_url=config.openai_embedding_base_url or config.llm_base_url,
+        openai_partition_id=config.partition_id,
+    )
 
 
 def build(
@@ -57,5 +66,5 @@ def build(
 
     backend = make_backend(config)
     store = build_vector_store(useful, backend, metric=config.faiss_metric)
-    save_store(store, config.index_dir)
+    save_store(store, config.resolved_index_dir)
     return store

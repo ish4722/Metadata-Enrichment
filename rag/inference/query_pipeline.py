@@ -21,8 +21,8 @@ from rag.inference.retrieval import retrieve_top_chunks
 
 def load_vector_store(config: RagConfig) -> VectorStore:
     """Load the FAISS store from the directory named in config."""
-    print(f"Loading vector store from {config.index_dir} ...")
-    return load_store(config.index_dir)
+    print(f"Loading vector store from {config.resolved_index_dir} ...")
+    return load_store(config.resolved_index_dir)
 
 
 def retrieve_and_build_context(
@@ -78,7 +78,7 @@ def answer_query(
             )
 
     if config.save_pages_sent_to_llm:
-        save_pages_sent_to_llm(context_items, query, f"{config.index_dir}/queries")
+        save_pages_sent_to_llm(context_items, query, f"{config.resolved_index_dir}/queries")
 
     answer: Optional[str] = None
     if llm is not None:

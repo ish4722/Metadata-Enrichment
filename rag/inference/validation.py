@@ -41,8 +41,12 @@ def evaluate(
     use_cache: bool = True,
     force_rebuild: bool = False,
     use_judge: bool = True,
-) -> None:
-    """Run the full evaluation using the current config's component choices."""
+) -> List[Any]:
+    """Run the full evaluation using the current config's component choices.
+
+    Returns the list of per-step :class:`rag_evaluation.StepMetrics` (including
+    the final ``TOTAL`` row) so callers can reuse the totals programmatically.
+    """
     llm = get_llm(config)
     if llm is None:
         print("LLM unavailable: accuracy will be measured against retrieved context only.")
@@ -50,10 +54,11 @@ def evaluate(
     # ── build phase (chained, each step profiled by the driver) ──────────────
     build_steps: List[Any] = [
         ("1. Load JSON", load_extracted_json),
-        ("2. Merge (section)", merge_blocks_by_section),
     ]
-    if config.merge_across_pages:
-        build_steps.append(("3. Merge (cross-page)", merge_across_pages))
+    if config.merge_sections:
+        build_steps.append(("2. Merge (section)", merge_blocks_by_section))
+        if config.merge_across_pages:
+            build_steps.append(("3. Merge (cross-page)", merge_across_pages))
     build_steps.append(
         (f"{len(build_steps) + 1}. Chunking",
          lambda c: build_useful_chunks(c, chunk_size=config.chunk_size, overlap=config.overlap))
@@ -92,7 +97,7 @@ def evaluate(
         except Exception:
             return "unknown"
 
-    rag_evaluation.run_evaluation(
+    return rag_evaluation.run_evaluation(
         input_path=input_path,
         queries_path=queries_path,
         ground_truth_path=ground_truth_path,

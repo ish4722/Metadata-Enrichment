@@ -39,6 +39,7 @@ def add_config_args(parser: argparse.ArgumentParser) -> None:
     g.add_argument("--chunk-size", type=int)
     g.add_argument("--overlap", type=int)
     g.add_argument("--no-cross-page-merge", action="store_true", help="Disable cross-page section merge")
+    g.add_argument("--naive", action="store_true", help="Naive mode: chunk raw JSON blocks without any section merge")
     g.add_argument("--index-dir", help="Directory for the FAISS store (index.faiss + meta.pkl)")
     g.add_argument("--faiss-metric", choices=["cosine", "l2"])
     g.add_argument("--retrieval-mode", choices=["dense", "hybrid"])
@@ -82,6 +83,8 @@ def build_config(args: argparse.Namespace) -> RagConfig:
         cfg.use_reranker = args.use_reranker
     if getattr(args, "no_cross_page_merge", False):
         cfg.merge_across_pages = False
+    if getattr(args, "naive", False):
+        cfg.merge_sections = False
     if getattr(args, "save_pages", False):
         cfg.save_pages_sent_to_llm = True
 
