@@ -21,9 +21,16 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Repo root (rag/config.py -> rag/ -> repo root); used to auto-detect a local
+# model snapshot such as ./jina-v3 that lives next to the package.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Friendly aliases accepted by ``embedding_model`` in addition to raw HF ids.
 JINA_MODEL_ID = "jinaai/jina-embeddings-v3"
 MINILM_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Folder names to probe when auto-detecting a local Jina v3 snapshot.
+JINA_LOCAL_DIRS = ("jina-v3",)
 
 EMBEDDING_ALIASES = {
     "jina": JINA_MODEL_ID,
@@ -45,7 +52,7 @@ class RagConfig:
 
     # ── embedding (folder 1)  ← SWAP EMBEDDING MODEL HERE ───────────────────
     # "jina" | "minilm" | "openai" | "tfidf" | any HuggingFace model id
-    embedding_model: str = "openai"
+    embedding_model: str = "tfidf"
     # OpenAI-compatible embeddings (SLB internal deployment). base_url defaults
     # to llm_base_url when left as None.
     openai_embedding_model: str = "text-embedding-3-small"
@@ -59,7 +66,7 @@ class RagConfig:
     # ── retrieval (folder 2) ────────────────────────────────────────────────
     retrieval_mode: str = "dense"         # "dense" | "hybrid"
     hybrid_alpha: float = 0.5             # 0 = pure BM25, 1 = pure dense
-    top_k: int = 10
+    top_k: int = 25
 
     # ── reranker  ← SWAP RERANKER HERE ──────────────────────────────────────
     use_reranker: bool = True
@@ -91,20 +98,40 @@ class RagConfig:
         return self.resolved_embedding_model == "tfidf"
 
     @property
+    def resolved_model_path(self) -> Optional[str]:
+        """Explicit ``model_path``, or an auto-detected local Jina v3 folder.
+
+        Mirrors the old pipeline's ``_resolve_model_path``: when the embedding
+        model is Jina and no ``model_path`` was given, look for a local
+        ``./jina-v3`` snapshot (next to the package or in the CWD) so we use the
+        offline weights instead of trying to download from HuggingFace.
+        """
+        if self.model_path:
+            return self.model_path
+        is_jina = "jina" in self.embedding_model.lower() or "jina" in self.resolved_embedding_model.lower()
+        if is_jina:
+            for name in JINA_LOCAL_DIRS:
+                for base in (_REPO_ROOT, os.getcwd()):
+                    candidate = os.path.join(base, name)
+                    if os.path.isdir(candidate):
+                        return candidate
+        return None
+
+    @property
     def embedding_slug(self) -> str:
         """Filesystem-safe identifier that is unique per embedding model.
 
-        Used to give each model its OWN vector-store folder so building with a
-        new model never overwrites another model's precomputed index. Note that
-        OpenAI / Jina / MiniLM share the coarse ``backend_tag`` of "dense"; this
-        slug keeps them distinct by using the concrete model id.
+        Used to give each model its OWN vector-store folder (and cache tag) so
+        building with a new model never overwrites or silently reuses another
+        model's precomputed index. The concrete model id keeps OpenAI / Jina /
+        MiniLM distinct from each other.
         """
         if self.use_tfidf:
             raw = "tfidf"
         elif self.embedding_model.lower() == "openai":
             raw = f"openai_{self.openai_embedding_model}"
-        elif self.model_path:
-            raw = os.path.basename(os.path.normpath(self.model_path))
+        elif self.resolved_model_path:
+            raw = os.path.basename(os.path.normpath(self.resolved_model_path))
         else:
             raw = self.resolved_embedding_model
         raw = str(raw).strip().strip("/\\")
@@ -122,10 +149,14 @@ class RagConfig:
         return os.path.join(self.index_dir, self.embedding_slug)
 
     def backend_tag(self) -> str:
-        """Short tag used to namespace cached indexes per backend."""
-        base = "tfidf" if self.use_tfidf else "dense"
+        """Tag used to namespace cached indexes per (model, context, merge).
+
+        Uses the per-model ``embedding_slug`` (not a coarse "dense") so that
+        OpenAI / Jina / MiniLM each get their OWN cache and never reuse another
+        model's pre-built index. TF-IDF keeps its existing ``tfidf_*`` tag.
+        """
         merge = "merge" if self.merge_sections else "naive"
-        return f"{base}_{self.context_mode}_{merge}"
+        return f"{self.embedding_slug}_{self.context_mode}_{merge}"
 
     @classmethod
     def from_env(cls) -> "RagConfig":

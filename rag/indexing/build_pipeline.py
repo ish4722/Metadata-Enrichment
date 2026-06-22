@@ -42,7 +42,7 @@ def chunks_from_json(input_path: str, config: RagConfig) -> List[Chunk]:
 
 def make_backend(config: RagConfig) -> EmbeddingBackend:
     """Construct the embedding backend selected in config."""
-    preferred = config.model_path or config.resolved_embedding_model
+    preferred = config.resolved_model_path or config.resolved_embedding_model
     return EmbeddingBackend(
         preferred_model=preferred,
         openai_model=config.openai_embedding_model,

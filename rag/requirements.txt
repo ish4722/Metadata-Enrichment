@@ -13,6 +13,9 @@ torch
 transformers
 sentence-transformers
 
+# Offline Jina v3 via the bundled ONNX weights (no flash custom code needed)
+onnxruntime
+
 # LLM (internal SLB stack)
 langchain-openai
 
