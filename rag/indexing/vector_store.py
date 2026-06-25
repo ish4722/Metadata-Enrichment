@@ -105,8 +105,13 @@ def build_vector_store(
     chunks: List[Chunk],
     backend: EmbeddingBackend,
     metric: str = "cosine",
+    build_bm25: bool = True,
 ) -> VectorStore:
-    """Embed all chunks, build the FAISS dense index and the BM25 sparse index."""
+    """Embed all chunks, build the FAISS dense index and (optionally) BM25.
+
+    ``build_bm25`` should be False for pure dense retrieval so we don't pay to
+    build a sparse index that will never be queried.
+    """
     if not HAS_FAISS:
         raise RuntimeError("faiss is not installed. Run: pip install faiss-cpu")
 
@@ -131,7 +136,9 @@ def build_vector_store(
     index.add(mat)
 
     bm25 = None
-    if HAS_BM25:
+    if not build_bm25:
+        pass  # pure dense retrieval - skip the sparse index entirely
+    elif HAS_BM25:
         print("Building BM25 index ...")
         bm25 = BM25Okapi([t.lower().split() for t in texts])
     else:

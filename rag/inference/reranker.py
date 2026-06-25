@@ -9,9 +9,23 @@ to ``top_k``) when sentence-transformers is unavailable or the model fails to lo
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional, Tuple
 
 from rag.common.schema import Chunk
+
+
+def _sigmoid(x: float) -> float:
+    """Map a cross-encoder logit to a (0, 1) relevance probability.
+
+    ms-marco cross-encoders emit raw, unbounded logits (often negative), which
+    are not human-readable as a "score". A sigmoid turns them into an
+    interpretable 0-1 relevance probability without changing the ranking.
+    """
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))
+    z = math.exp(x)
+    return z / (1.0 + z)
 
 try:
     from sentence_transformers import CrossEncoder
@@ -51,4 +65,4 @@ def rerank(
     pairs = [(query, c.text) for c, _ in matches]
     scores = reranker.predict(pairs)
     ranked = sorted(zip(matches, scores), key=lambda x: x[1], reverse=True)
-    return [(chunk, float(score)) for (chunk, _old), score in ranked[:top_k]]
+    return [(chunk, _sigmoid(float(score))) for (chunk, _old), score in ranked[:top_k]]

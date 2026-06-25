@@ -4,6 +4,7 @@ scikit-learn
 
 # Vector store
 faiss-cpu
+chromadb
 
 # Sparse / hybrid retrieval
 rank-bm25

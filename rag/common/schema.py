@@ -20,3 +20,11 @@ class Chunk:
     block_type: str
     text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Section identity derived from datalab's ``section_hierarchy`` (see
+    # rag.indexing.loader). ``leaf_section_id`` is the deepest SectionHeader the
+    # block lives under; ``parent_section_id`` is its immediate parent header.
+    # Both are global ids like "/page/0/SectionHeader/4". ``order`` is the
+    # document-order position used to keep multi-page sections in reading order.
+    leaf_section_id: str = ""
+    parent_section_id: str = ""
+    order: int = 0

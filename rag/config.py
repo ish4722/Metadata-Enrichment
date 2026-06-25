@@ -49,22 +49,40 @@ class RagConfig:
     # When False, run the naive approach: skip section/cross-page merging and
     # chunk the raw datalab JSON blocks directly (for A/B comparison).
     merge_sections: bool = True
+    # Chunking strategy:
+    #   "section" - hierarchy-aware: group blocks by the leaf section resolved
+    #               from datalab's section_hierarchy, prefix the parent
+    #               breadcrumb, split oversize sections (recommended).
+    #   "legacy"  - the old merge_by_section + merge_across_pages + window flow.
+    chunk_strategy: str = "section"
 
     # ── embedding (folder 1)  ← SWAP EMBEDDING MODEL HERE ───────────────────
     # "jina" | "minilm" | "openai" | "tfidf" | any HuggingFace model id
-    embedding_model: str = "tfidf"
+    embedding_model: str = "openai"
     # OpenAI-compatible embeddings (SLB internal deployment). base_url defaults
     # to llm_base_url when left as None.
-    openai_embedding_model: str = "text-embedding-3-small"
+    openai_embedding_model: str = "text-embedding-3-large"
     openai_embedding_base_url: Optional[str] = "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1"
     openai_embedding_partition_id: Optional[str] = "sandbox-weu-des-prod-testing-e"
 
-    # ── vector store (FAISS)  ← SWAP DB HERE ────────────────────────────────
+    # ── vector store  ← SWAP DB HERE ────────────────────────────────────────
+    # "chroma" - persistent ChromaDB collection that stores our PRECOMPUTED
+    #            embeddings (embed-once; never re-embeds on reuse).
+    # "faiss"  - the legacy in-memory FAISS index serialised to meta.pkl.
+    vector_backend: str = "chroma"
     faiss_metric: str = "cosine"          # "cosine" | "l2"
-    index_dir: str = "rag/faiss_store"    # holds index.faiss + meta.pkl
+    index_dir: str = "rag/faiss_store"    # holds index.faiss + meta.pkl (faiss)
+    chroma_dir: str = "chroma_store"      # PersistentClient path (chroma)
+
+    # ── parallelism (bounded, to respect API rate limits) ───────────────────
+    embed_batch_size: int = 64            # texts per embedding request/batch
+    embed_max_workers: int = 8            # concurrent embedding requests (API)
+    llm_max_workers: int = 8              # concurrent LLM/judge calls
+    doc_max_workers: int = 4              # docs processed concurrently
+    load_max_workers: int = 4             # process-pool workers for load+chunk
 
     # ── retrieval (folder 2) ────────────────────────────────────────────────
-    retrieval_mode: str = "dense"         # "dense" | "hybrid"
+    retrieval_mode: str = "hybrid"         # "dense" | "hybrid"
     hybrid_alpha: float = 0.5             # 0 = pure BM25, 1 = pure dense
     top_k: int = 25
 
@@ -147,6 +165,17 @@ class RagConfig:
         ``index.faiss`` + ``meta.pkl`` live in their own subfolder.
         """
         return os.path.join(self.index_dir, self.embedding_slug)
+
+    @property
+    def chroma_collection(self) -> str:
+        """Collection name unique per (embedding model, chunk strategy).
+
+        Each (model, strategy) pair gets its own collection so vectors built
+        with different settings never collide, and reusing the same pair serves
+        the precomputed vectors straight from disk (embed-once).
+        """
+        name = f"{self.embedding_slug}__{self.chunk_strategy}"
+        return re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("._-") or "default"
 
     def backend_tag(self) -> str:
         """Tag used to namespace cached indexes per (model, context, merge).

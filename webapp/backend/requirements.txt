@@ -1,0 +1,5 @@
+# Web app backend (wraps the existing `rag` package)
+# Install on top of the repo's rag/requirements.txt
+fastapi
+uvicorn[standard]
+python-multipart

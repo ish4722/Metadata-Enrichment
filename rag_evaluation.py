@@ -47,29 +47,44 @@ class StepMetrics:
     step: str
     cost_usd: float = 0.0
     tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     accuracy: Optional[float] = None  # fraction in [0, 1]; None means N/A
     time_s: float = 0.0
     peak_mem_mb: float = 0.0
 
 
-class StepProfiler:
-    """Context manager that measures wall-clock time and peak memory of a step."""
+# Memory profiling via tracemalloc roughly doubles per-call overhead, which is a
+# real cost when benchmarking many docs. It is OFF by default; enable it with
+# PROFILE_MEMORY=1 or by passing ``profile_memory=True`` to ``run_evaluation``.
+PROFILE_MEMORY = os.getenv("PROFILE_MEMORY", "0") not in ("0", "", "false", "False")
 
-    def __init__(self) -> None:
+
+class StepProfiler:
+    """Context manager that measures wall-clock time and (optionally) peak memory.
+
+    ``tracemalloc`` is only started when ``profile_memory`` is True, so the common
+    benchmarking path pays just a ``perf_counter`` per step.
+    """
+
+    def __init__(self, profile_memory: Optional[bool] = None) -> None:
         self.elapsed = 0.0
         self.peak_mem_mb = 0.0
         self._start = 0.0
+        self._profile_memory = PROFILE_MEMORY if profile_memory is None else profile_memory
 
     def __enter__(self) -> "StepProfiler":
-        tracemalloc.start()
+        if self._profile_memory:
+            tracemalloc.start()
         self._start = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.elapsed = time.perf_counter() - self._start
-        _current, peak = tracemalloc.get_traced_memory()
-        self.peak_mem_mb = peak / (1024 * 1024)
-        tracemalloc.stop()
+        if self._profile_memory:
+            _current, peak = tracemalloc.get_traced_memory()
+            self.peak_mem_mb = peak / (1024 * 1024)
+            tracemalloc.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -300,11 +315,19 @@ def make_judge_prompt(question: str, ground_truth: str, answer: str) -> str:
         f"Expected value (ground truth): {ground_truth}\n"
         f"System answer: {answer}\n\n"
         "Treat the answer as CORRECT if it states the same value as the expected "
-        "value, allowing for differences in formatting, units, date formats, "
-        "coordinate notation (e.g. decimal degrees vs degrees-minutes-seconds), "
-        "abbreviations, synonyms, or extra surrounding text. Treat it as INCORRECT "
-        "if it gives a different value, contradicts the expected value, refers to a "
-        "different entity, or says the information is unavailable.\n"
+        "value, allowing for differences in formatting, units, abbreviations, "
+        "synonyms, or extra surrounding text. Apply these tolerances explicitly:\n"
+        "- DATES: accept any answer whose date is within +/- 1 calendar day of the "
+        "expected date (this absorbs off-by-one and timezone/format differences), "
+        "and ignore differences in date format (e.g. 6/03/2006 vs 2006-03-06).\n"
+        "- COORDINATES: first CONVERT both the expected value and the system answer "
+        "to WGS84 decimal degrees (latitude, longitude) regardless of their input "
+        "format - degrees-minutes-seconds (DMS), degrees-decimal-minutes, UTM/easting-"
+        "northing, or decimal degrees - then treat them as a match if they refer to "
+        "the same location within normal rounding tolerance (about 3-4 decimal places, "
+        "i.e. a few hundred metres). Sign/hemisphere (N/S, E/W) must agree.\n"
+        "Treat it as INCORRECT if it gives a different value, contradicts the expected "
+        "value, refers to a different entity, or says the information is unavailable.\n"
         "Respond with exactly one word: YES if it is correct, or NO if it is not."
     )
 
@@ -331,25 +354,8 @@ def llm_judge_match(
 # ---------------------------------------------------------------------------
 
 
-def render_metrics_table(metrics: List[StepMetrics]) -> str:
-    """Render the per-step metrics as an aligned ASCII table."""
-    headers = ["Step", "Cost ($)", "Tokens", "Accuracy", "Time (s)", "Memory (MB)"]
-
-    def fmt_accuracy(acc: Optional[float]) -> str:
-        return f"{acc * 100:.1f}%" if acc is not None else "N/A"
-
-    rows = [
-        [
-            m.step,
-            f"{m.cost_usd:.6f}",
-            str(m.tokens),
-            fmt_accuracy(m.accuracy),
-            f"{m.time_s:.4f}",
-            f"{m.peak_mem_mb:.2f}",
-        ]
-        for m in metrics
-    ]
-
+def _render_ascii_table(headers: List[str], rows: List[List[str]]) -> str:
+    """Render an aligned ASCII table from headers + string rows."""
     widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
@@ -359,9 +365,59 @@ def render_metrics_table(metrics: List[StepMetrics]) -> str:
         return " | ".join(cell.ljust(widths[i]) for i, cell in enumerate(cells))
 
     separator = "-+-".join("-" * w for w in widths)
-    lines = [render_row(headers), separator]
-    lines.extend(render_row(row) for row in rows)
-    return "\n".join(lines)
+    return "\n".join([render_row(headers), separator] + [render_row(r) for r in rows])
+
+
+def render_metrics_table(metrics: List[StepMetrics]) -> str:
+    """Render the per-step metrics as an aligned ASCII table.
+
+    Token usage is broken out into input vs output (the ``Tokens`` column stays
+    as the total for backwards compatibility).
+    """
+    headers = ["Step", "Cost ($)", "In tok", "Out tok", "Tokens", "Accuracy", "Time (s)", "Memory (MB)"]
+
+    def fmt_accuracy(acc: Optional[float]) -> str:
+        return f"{acc * 100:.1f}%" if acc is not None else "N/A"
+
+    rows = [
+        [
+            m.step,
+            f"{m.cost_usd:.6f}",
+            str(m.input_tokens),
+            str(m.output_tokens),
+            str(m.tokens),
+            fmt_accuracy(m.accuracy),
+            f"{m.time_s:.4f}",
+            f"{m.peak_mem_mb:.2f}",
+        ]
+        for m in metrics
+    ]
+    return _render_ascii_table(headers, rows)
+
+
+def render_query_table(per_query_rows: List[Dict[str, Any]]) -> str:
+    """Render the per-query analysis (hits + token in/out) as an ASCII table."""
+    headers = ["Query", "Retr", "LLM", "Tok-match", "Gen in", "Gen out", "Judge in", "Judge out"]
+
+    def flag(value: Any) -> str:
+        if value is None:
+            return "-"
+        return "MATCH" if value else "miss"
+
+    rows = [
+        [
+            str(r.get("label", "?"))[:24],
+            flag(r.get("retrieval_hit")),
+            flag(r.get("llm_hit")),
+            flag(r.get("token_match")),
+            str(r.get("input_tokens", 0)),
+            str(r.get("output_tokens", 0)),
+            str(r.get("judge_input_tokens", 0)),
+            str(r.get("judge_output_tokens", 0)),
+        ]
+        for r in per_query_rows
+    ]
+    return _render_ascii_table(headers, rows)
 
 
 def configure_utf8_stdout() -> None:
@@ -515,6 +571,7 @@ def run_evaluation(
     save_index_fn: Callable[[str, Any], None] = default_save_index,
     load_index_fn: Callable[[str], Any] = default_load_index,
     backend_mode_fn: Optional[Callable[[Any], str]] = None,
+    profile_memory: Optional[bool] = None,
 ) -> List[StepMetrics]:
     """
     Run a full evaluation and print a per-step metrics table.
@@ -576,7 +633,7 @@ def run_evaluation(
     else:
         ctx = input_path
         for name, fn in build_steps:
-            with StepProfiler() as prof:
+            with StepProfiler(profile_memory) as prof:
                 ctx = fn(ctx)
             metrics.append(StepMetrics(name, time_s=prof.elapsed, peak_mem_mb=prof.peak_mem_mb))
             size_note = f" ({len(ctx)} items)" if isinstance(ctx, (list, tuple)) else ""
@@ -604,6 +661,8 @@ def run_evaluation(
     llm_time = 0.0
     llm_peak = 0.0
     llm_total_tokens = 0
+    llm_input_tokens = 0
+    llm_output_tokens = 0
     llm_cost = 0.0
     llm_correct = 0
     llm_evaluated = 0
@@ -611,6 +670,8 @@ def run_evaluation(
     judge_time = 0.0
     judge_peak = 0.0
     judge_total_tokens = 0
+    judge_input_tokens = 0
+    judge_output_tokens = 0
     judge_cost = 0.0
     judge_used = 0
 
@@ -621,7 +682,7 @@ def run_evaluation(
         gt = extract_ground_truth(label, matched_json)
         tokens = gt["tokens"]
 
-        with StepProfiler() as prof:
+        with StepProfiler(profile_memory) as prof:
             matches, retrieved_text = retrieve_fn(ctx, q["retrieval_query"], top_k)
         retrieval_time += prof.elapsed
         retrieval_peak = max(retrieval_peak, prof.peak_mem_mb)
@@ -632,28 +693,33 @@ def run_evaluation(
 
         answer = ""
         usage = {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0}
+        judge_usage = {"total_tokens": 0, "input_tokens": 0, "output_tokens": 0}
         llm_hit: Optional[bool] = None
         token_hit: Optional[bool] = None
         judge_hit: Optional[bool] = None
         if answer_fn is not None:
-            with StepProfiler() as prof:
+            with StepProfiler(profile_memory) as prof:
                 result = answer_fn(ctx, q["question"], matches)
             if result is not None:
                 answer, usage = result
                 llm_time += prof.elapsed
                 llm_peak = max(llm_peak, prof.peak_mem_mb)
                 llm_total_tokens += usage.get("total_tokens", 0)
+                llm_input_tokens += usage.get("input_tokens", 0)
+                llm_output_tokens += usage.get("output_tokens", 0)
                 llm_cost += token_cost_usd(usage.get("input_tokens", 0), usage.get("output_tokens", 0))
                 token_hit = answer_is_correct(answer, tokens)
 
                 # Optional LLM judge: confirm a semantic match (handles format
                 # differences the literal token check misses).
                 if judge_fn is not None and gt["value"]:
-                    with StepProfiler() as prof:
+                    with StepProfiler(profile_memory) as prof:
                         judge_hit, judge_usage = judge_fn(q["question"], str(gt["value"]), answer)
                     judge_time += prof.elapsed
                     judge_peak = max(judge_peak, prof.peak_mem_mb)
                     judge_total_tokens += judge_usage.get("total_tokens", 0)
+                    judge_input_tokens += judge_usage.get("input_tokens", 0)
+                    judge_output_tokens += judge_usage.get("output_tokens", 0)
                     judge_cost += token_cost_usd(judge_usage.get("input_tokens", 0), judge_usage.get("output_tokens", 0))
                     judge_used += 1
                     llm_hit = judge_hit
@@ -675,6 +741,11 @@ def run_evaluation(
                 "llm_hit": llm_hit,
                 "answer": answer,
                 "tokens": usage.get("total_tokens", 0),
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "judge_tokens": judge_usage.get("total_tokens", 0),
+                "judge_input_tokens": judge_usage.get("input_tokens", 0),
+                "judge_output_tokens": judge_usage.get("output_tokens", 0),
             }
         )
 
@@ -696,6 +767,8 @@ def run_evaluation(
                 f"{llm_step_no}. LLM generation",
                 cost_usd=llm_cost,
                 tokens=llm_total_tokens,
+                input_tokens=llm_input_tokens,
+                output_tokens=llm_output_tokens,
                 accuracy=llm_correct / llm_evaluated,
                 time_s=llm_time,
                 peak_mem_mb=llm_peak,
@@ -710,6 +783,8 @@ def run_evaluation(
                 f"{llm_step_no + 1}. LLM verify (judge)",
                 cost_usd=judge_cost,
                 tokens=judge_total_tokens,
+                input_tokens=judge_input_tokens,
+                output_tokens=judge_output_tokens,
                 accuracy=llm_correct / llm_evaluated if llm_evaluated else None,
                 time_s=judge_time,
                 peak_mem_mb=judge_peak,
@@ -720,6 +795,8 @@ def run_evaluation(
         "TOTAL",
         cost_usd=sum(m.cost_usd for m in metrics),
         tokens=sum(m.tokens for m in metrics),
+        input_tokens=sum(m.input_tokens for m in metrics),
+        output_tokens=sum(m.output_tokens for m in metrics),
         accuracy=metrics[-1].accuracy if metrics[-1].accuracy is not None else metrics[-2].accuracy,
         time_s=sum(m.time_s for m in metrics),
         peak_mem_mb=max((m.peak_mem_mb for m in metrics), default=0.0),
@@ -738,8 +815,16 @@ def run_evaluation(
             print(f"    llm (judge)  : {llm_status}  (literal token check: {token_status})")
         else:
             print(f"    llm          : {llm_status}")
+        print(
+            f"    tokens       : gen in/out={row.get('input_tokens', 0)}/{row.get('output_tokens', 0)}"
+            f"  judge in/out={row.get('judge_input_tokens', 0)}/{row.get('judge_output_tokens', 0)}"
+        )
         if row["answer"]:
             print(f"    answer       : {row['answer'][:200].strip()}")
+
+    # --- Query-wise analysis table ---
+    print("\nQuery-wise analysis:")
+    print(render_query_table(per_query_rows))
 
     # --- Metrics table ---
     all_rows = metrics + [total]
