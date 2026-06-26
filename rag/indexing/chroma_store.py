@@ -57,6 +57,10 @@ def _minmax_normalize(arr: np.ndarray) -> np.ndarray:
 # JSON-encoded under dedicated keys and decoded back on read.
 _SCALAR_META = ("page", "section_path", "section_name", "leaf_section_id", "parent_section_id")
 
+# Chroma's local (Rust) backend rejects a single add() larger than 5461 records.
+# Stay safely under that so large documents insert in multiple batches.
+_MAX_ADD_BATCH = 5000
+
 
 def _doc_namespaced_id(doc_id: str, chunk_id: str) -> str:
     return f"{doc_id}::{chunk_id}"
@@ -126,8 +130,9 @@ class ChromaVectorStore:
         self.collection = collection
         self.backend = backend
         self.metric = metric
-        # Lazily built full-corpus cache + BM25 index (used by hybrid retrieval).
-        self._corpus_cache: Optional[Dict[str, Any]] = None
+        # Lazily built corpus + BM25 index for hybrid retrieval, cached per scope
+        # ("__all__" for the whole collection, or a doc_id when scoped to one doc).
+        self._corpus_cache: Dict[str, Dict[str, Any]] = {}
 
     # ── build-time ───────────────────────────────────────────────────────────
     def add_document(
@@ -151,12 +156,17 @@ class ChromaVectorStore:
         if not new_idx:
             return 0
 
-        self.collection.add(
-            ids=[ids[i] for i in new_idx],
-            embeddings=[embeddings[i].astype(float).tolist() for i in new_idx],
-            documents=[chunks[i].text for i in new_idx],
-            metadatas=[_chunk_to_metadata(chunks[i], doc_id) for i in new_idx],
-        )
+        # Chroma's local backend caps a single add() at 5461 records, so insert
+        # in batches under that limit. Docs with thousands of chunks would
+        # otherwise crash with "Batch size ... greater than max batch size".
+        for start in range(0, len(new_idx), _MAX_ADD_BATCH):
+            batch = new_idx[start:start + _MAX_ADD_BATCH]
+            self.collection.add(
+                ids=[ids[i] for i in batch],
+                embeddings=[embeddings[i].astype(float).tolist() for i in batch],
+                documents=[chunks[i].text for i in batch],
+                metadatas=[_chunk_to_metadata(chunks[i], doc_id) for i in batch],
+            )
         return len(new_idx)
 
     def has_document(self, doc_id: str) -> bool:
@@ -234,18 +244,22 @@ class ChromaVectorStore:
         return out
 
     # ── hybrid retrieval (dense + BM25) ───────────────────────────────────────
-    def _ensure_corpus(self) -> Dict[str, Any]:
-        """Load the full collection once and build a BM25 index over its text.
+    def _ensure_corpus(self, doc_id: Optional[str] = None) -> Dict[str, Any]:
+        """Load the (optionally doc-scoped) corpus and build a BM25 index over it.
 
         The chunk text is already stored in Chroma (``documents``), so BM25 needs
         no extra persistence - it is rebuilt from those documents and cached on
-        the store instance for the life of the process (long-lived runners build
-        it once; the one-shot CLI builds it once per invocation).
+        the store instance, keyed by scope. When ``doc_id`` is given only that
+        document's chunks are loaded, which keeps BM25 correct (no cross-doc
+        contamination) and avoids loading/scoring the whole multi-doc collection.
         """
-        if self._corpus_cache is not None:
-            return self._corpus_cache
+        key = doc_id or "__all__"
+        cached = self._corpus_cache.get(key)
+        if cached is not None:
+            return cached
 
-        got = self.collection.get(include=["documents", "metadatas"])
+        where = {"doc_id": doc_id} if doc_id else None
+        got = self.collection.get(where=where, include=["documents", "metadatas"])
         ids = got.get("ids") or []
         docs = got.get("documents") or []
         metas = got.get("metadatas") or []
@@ -257,17 +271,25 @@ class ChromaVectorStore:
         elif not HAS_BM25:
             print("[info] rank_bm25 not installed - hybrid retrieval falls back to dense.")
 
-        self._corpus_cache = {"ids": ids, "chunks": chunks, "bm25": bm25}
-        return self._corpus_cache
+        self._corpus_cache[key] = {"ids": ids, "chunks": chunks, "bm25": bm25}
+        return self._corpus_cache[key]
 
-    def _dense_scores_full(self, query: str, ids: List[str]) -> np.ndarray:
-        """Dense score for every chunk in ``ids`` (higher = better), aligned to ids."""
+    def _dense_scores_full(
+        self, query: str, ids: List[str], doc_id: Optional[str] = None
+    ) -> np.ndarray:
+        """Dense score for every chunk in ``ids`` (higher = better), aligned to ids.
+
+        When ``doc_id`` is given the dense query is pushed down to that document,
+        so ``n_results`` stays bounded by the doc's chunk count instead of the
+        whole collection (which would exceed SQLite's variable limit).
+        """
         n = len(ids)
         if n == 0:
             return np.zeros(0, dtype=np.float32)
         query_vec = self.embed_query(query)[0].astype(float).tolist()
+        where = {"doc_id": doc_id} if doc_id else None
         res = self.collection.query(
-            query_embeddings=[query_vec], n_results=n, include=["distances"]
+            query_embeddings=[query_vec], n_results=n, where=where, include=["distances"]
         )
         res_ids = (res.get("ids") or [[]])[0]
         res_dists = (res.get("distances") or [[]])[0]
@@ -293,18 +315,17 @@ class ChromaVectorStore:
         corpus, mirroring the FAISS hybrid path. Falls back to dense-only when
         BM25 is unavailable.
         """
-        corpus = self._ensure_corpus()
+        corpus = self._ensure_corpus(doc_id)
         ids: List[str] = corpus["ids"]
         chunks: List[Chunk] = corpus["chunks"]
         bm25 = corpus["bm25"]
         if not ids:
             return []
 
-        dense = self._dense_scores_full(query, ids)
+        dense = self._dense_scores_full(query, ids, doc_id)
 
         mask = np.ones(len(ids), dtype=bool)
-        if doc_id:
-            mask &= np.array([c.metadata.get("doc_id") == doc_id for c in chunks])
+        # corpus is already scoped to doc_id, so no doc mask is needed here.
         if section_filter:
             mask &= np.array([section_filter.lower() in (c.section_path or "").lower() for c in chunks])
         if page_range:

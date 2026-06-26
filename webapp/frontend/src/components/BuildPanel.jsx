@@ -65,7 +65,15 @@ function describe(ev) {
   if (ev.stage === "embedding" && ev.status === "start")
     return `Embedding ${ev.num_chunks} chunks with ${ev.backend}...`;
   if (ev.stage === "embedding" && ev.status === "done") return `Embedded (${ev.added} added).`;
-  if (ev.stage === "done") return ev.message || "Done.";
+  if (ev.stage === "done") {
+    const cost = fmtCost(ev.embedding_cost_usd, ev.embedding_tokens);
+    return (ev.message || "Done.") + cost;
+  }
   if (ev.stage === "error") return `Error: ${ev.message}`;
   return ev.stage;
+}
+
+function fmtCost(cost, tokens) {
+  if (!cost) return "";
+  return `  (embedding: ${tokens.toLocaleString()} tok, $${cost.toFixed(4)})`;
 }

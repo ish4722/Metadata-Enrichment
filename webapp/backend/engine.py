@@ -137,10 +137,20 @@ class RagEngine:
                    "backend": backend.backend_name}
             embeddings = embed_corpus(backend, texts)
             added = store.add_document(doc_id, chunks, embeddings)
-            yield {"stage": "embedding", "status": "done", "added": added}
+
+            # Embedding cost only applies to the paid OpenAI backend; local
+            # backends (tfidf / jina / minilm) are free.
+            embed_tokens = 0
+            embed_cost = 0.0
+            if backend.backend_name == "openai":
+                embed_tokens = rag_evaluation.count_tokens(texts)
+                embed_cost = rag_evaluation.embedding_cost_usd(embed_tokens)
+            yield {"stage": "embedding", "status": "done", "added": added,
+                   "embedding_tokens": embed_tokens, "embedding_cost_usd": embed_cost}
 
             yield {"stage": "done", "already_built": False, "added": added,
                    "collection": cfg.chroma_collection,
+                   "embedding_tokens": embed_tokens, "embedding_cost_usd": embed_cost,
                    "message": f"Embedded {added} chunks for {doc_id}."}
 
     # ── query (staged) ──────────────────────────────────────────────────────────
@@ -190,7 +200,12 @@ class RagEngine:
             yield {"stage": "embed", "status": "start", "query": retrieval_query}
             qvec = store.embed_query(retrieval_query)
             dim = int(qvec.shape[-1]) if getattr(qvec, "shape", None) else 0
-            yield {"stage": "embed", "status": "done", "dim": dim}
+            embed_cost = 0.0
+            if self.get_backend(cfg).backend_name == "openai":
+                embed_cost = rag_evaluation.embedding_cost_usd(
+                    rag_evaluation.count_tokens([retrieval_query])
+                )
+            yield {"stage": "embed", "status": "done", "dim": dim, "embedding_cost_usd": embed_cost}
 
             # 2. retrieve
             yield {"stage": "retrieve", "status": "start",
@@ -231,7 +246,11 @@ class RagEngine:
                 answer, usage = rag_evaluation.invoke_llm_with_usage(
                     llm, make_prompt(question, context_items)
                 )
-                yield {"stage": "llm", "status": "done", "answer": answer, "usage": usage}
+                gen_cost = rag_evaluation.token_cost_usd(
+                    usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+                )
+                yield {"stage": "llm", "status": "done", "answer": answer,
+                       "usage": usage, "cost_usd": gen_cost}
             else:
                 yield {"stage": "llm", "status": "skipped",
                        "message": "LLM unavailable - showing retrieved context only."}
@@ -243,9 +262,10 @@ class RagEngine:
                 retrieval_hit = rag_evaluation.answer_is_correct(raw_text, gt_tokens)
                 token_match = rag_evaluation.answer_is_correct(answer, gt_tokens) if answer else False
                 judge_match = None
+                judge_confidence = None
                 if llm is not None and answer:
                     try:
-                        judge_match, _usage = rag_evaluation.llm_judge_match(
+                        judge_match, judge_confidence, _usage = rag_evaluation.llm_judge_verdict(
                             llm, question, str(gt_value), answer
                         )
                     except Exception as exc:  # noqa: BLE001
@@ -256,7 +276,8 @@ class RagEngine:
                        "ground_truth": gt_value,
                        "retrieval_hit": retrieval_hit,
                        "token_match": token_match,
-                       "judge_match": judge_match}
+                       "judge_match": judge_match,
+                       "judge_confidence": judge_confidence}
             else:
                 yield {"stage": "validate", "status": "skipped",
                        "message": "No ground-truth value for this query - skipping validation.",

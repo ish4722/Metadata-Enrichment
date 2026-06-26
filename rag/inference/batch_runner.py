@@ -105,6 +105,11 @@ class BatchRunner:
         self.config = config
         self.use_judge = use_judge
         self._rerank_lock = threading.Lock()  # cross-encoder is not thread-safe
+        # Embedding-cost accounting for this run (only the OpenAI backend is paid;
+        # local backends embed for free).
+        self.embed_tokens = 0
+        self.embed_cost_usd = 0.0
+        self._embed_stat_lock = threading.Lock()
 
         print("Loading models once (embedding backend + reranker + LLM) ...")
         self.backend = make_backend(config)
@@ -158,6 +163,11 @@ class BatchRunner:
             embeddings = embed_corpus(self.backend, texts)
             with add_lock:
                 added = self.store.add_document(doc_id, chunks, embeddings)
+            if self.backend.backend_name == "openai":
+                tok = rag_evaluation.count_tokens(texts)
+                with self._embed_stat_lock:
+                    self.embed_tokens += tok
+                    self.embed_cost_usd += rag_evaluation.embedding_cost_usd(tok)
             print(f"  [chroma] {doc_id}: embedded {len(texts)} chunks, added {added} "
                   f"({time.perf_counter() - t0:.1f}s)")
 
@@ -172,7 +182,13 @@ class BatchRunner:
     # ── retrieval phase ────────────────────────────────────────────────────────
     def _retrieve_one(self, qr: QueryResult) -> QueryResult:
         t0 = time.perf_counter()
-        matches = self.store.query(qr.retrieval_query, top_k=self.config.top_k, doc_id=qr.doc_id)
+        if self.config.retrieval_mode == "hybrid":
+            matches = self.store.query_hybrid(
+                qr.retrieval_query, top_k=self.config.top_k,
+                hybrid_alpha=self.config.hybrid_alpha, doc_id=qr.doc_id,
+            )
+        else:
+            matches = self.store.query(qr.retrieval_query, top_k=self.config.top_k, doc_id=qr.doc_id)
         if self.reranker is not None and matches:
             with self._rerank_lock:
                 matches = rerank(qr.retrieval_query, matches, self.config.reranker_model,
@@ -279,7 +295,11 @@ def _qr_to_row(qr: QueryResult) -> Dict[str, Any]:
     }
 
 
-def summarize(results: List[QueryResult]) -> Dict[str, Any]:
+def summarize(
+    results: List[QueryResult],
+    embed_tokens: int = 0,
+    embed_cost_usd: float = 0.0,
+) -> Dict[str, Any]:
     rows = [_qr_to_row(r) for r in results]
     total = len(rows)
 
@@ -295,6 +315,17 @@ def summarize(results: List[QueryResult]) -> Dict[str, Any]:
     judge_in = sum(r["judge_input_tokens"] for r in rows)
     judge_out = sum(r["judge_output_tokens"] for r in rows)
 
+    # Costs (USD). Generation + judge use the chat-model pricing; embedding uses
+    # the embedding-model pricing accumulated during the build phase.
+    gen_cost = rag_evaluation.token_cost_usd(gen_in, gen_out)
+    judge_cost = rag_evaluation.token_cost_usd(judge_in, judge_out)
+    total_cost = gen_cost + judge_cost + embed_cost_usd
+
+    # Wall-clock time spent per phase (summed across all tasks).
+    retrieval_time = sum(r["retrieval_time_s"] for r in rows)
+    gen_time = sum(r["gen_time_s"] for r in rows)
+    judge_time = sum(r["judge_time_s"] for r in rows)
+
     return {
         "total_questions": total,
         "combined_llm_accuracy": (llm_correct / total) if total else None,
@@ -304,9 +335,22 @@ def summarize(results: List[QueryResult]) -> Dict[str, Any]:
         "token_correct": token_correct,
         "retrieval_correct": retr_correct,
         "tokens": {
+            "embed_input": embed_tokens,
             "gen_input": gen_in, "gen_output": gen_out,
             "judge_input": judge_in, "judge_output": judge_out,
             "total": gen_in + gen_out + judge_in + judge_out,
+        },
+        "cost_usd": {
+            "embedding": embed_cost_usd,
+            "generation": gen_cost,
+            "judge": judge_cost,
+            "total": total_cost,
+        },
+        "time_s": {
+            "retrieval": retrieval_time,
+            "generation": gen_time,
+            "judge": judge_time,
+            "total": retrieval_time + gen_time + judge_time,
         },
         "per_query": rows,
     }
@@ -334,9 +378,38 @@ def print_summary(summary: Dict[str, Any]) -> None:
     print(rag_evaluation._render_ascii_table(
         ["Phase", "Input tok", "Output tok"],
         [
+            ["Embedding", str(t.get("embed_input", 0)), "-"],
             ["Generation", str(t["gen_input"]), str(t["gen_output"])],
             ["Judge", str(t["judge_input"]), str(t["judge_output"])],
             ["TOTAL", str(t["gen_input"] + t["judge_input"]), str(t["gen_output"] + t["judge_output"])],
+        ],
+    ))
+
+    c = summary.get("cost_usd", {})
+    print("\n" + "=" * 70)
+    print("COST (USD)")
+    print("=" * 70)
+    print(rag_evaluation._render_ascii_table(
+        ["Phase", "Cost (USD)"],
+        [
+            ["Embedding (this run)", f"${c.get('embedding', 0.0):.4f}"],
+            ["Generation (LLM)", f"${c.get('generation', 0.0):.4f}"],
+            ["Judge (LLM)", f"${c.get('judge', 0.0):.4f}"],
+            ["TOTAL", f"${c.get('total', 0.0):.4f}"],
+        ],
+    ))
+
+    tm = summary.get("time_s", {})
+    print("\n" + "=" * 70)
+    print("TIME (seconds, summed across tasks)")
+    print("=" * 70)
+    print(rag_evaluation._render_ascii_table(
+        ["Phase", "Time (s)"],
+        [
+            ["Retrieval", f"{tm.get('retrieval', 0.0):.1f}"],
+            ["Generation", f"{tm.get('generation', 0.0):.1f}"],
+            ["Judge", f"{tm.get('judge', 0.0):.1f}"],
+            ["TOTAL", f"{tm.get('total', 0.0):.1f}"],
         ],
     ))
     print("\nQuery-wise analysis:")
@@ -392,7 +465,8 @@ def main() -> None:
     results = runner.run(matched, queries)
     print(f"Inference phase done in {time.perf_counter() - t1:.1f}s")
 
-    summary = summarize(results)
+    summary = summarize(results, embed_tokens=runner.embed_tokens,
+                        embed_cost_usd=runner.embed_cost_usd)
     print_summary(summary)
 
     os.makedirs(os.path.dirname(args.summary_output) or ".", exist_ok=True)

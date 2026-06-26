@@ -33,8 +33,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 DEFAULT_CACHE_ROOT = "index_cache"
 TIMINGS_FILENAME = "build_timings.txt"
 
-LLM_INPUT_PRICE_PER_1K = float(os.getenv("LLM_INPUT_PRICE_PER_1K", "0.00015"))
-LLM_OUTPUT_PRICE_PER_1K = float(os.getenv("LLM_OUTPUT_PRICE_PER_1K", "0.00060"))
+# USD per 1,000 tokens. Defaults are the official OpenAI list prices (June 2026):
+#   gpt-5.2                : $1.75 / 1M input,  $14.00 / 1M output
+#   text-embedding-3-large : $0.13 / 1M input  (embeddings have no output cost)
+# Override any of these via the matching environment variables.
+LLM_INPUT_PRICE_PER_1K = float(os.getenv("LLM_INPUT_PRICE_PER_1K", "0.00175"))
+LLM_OUTPUT_PRICE_PER_1K = float(os.getenv("LLM_OUTPUT_PRICE_PER_1K", "0.014"))
+EMBEDDING_PRICE_PER_1K = float(os.getenv("EMBEDDING_PRICE_PER_1K", "0.00013"))
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +261,42 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+# Cached tiktoken encoder for accurate embedding-token counts (falls back to the
+# ~4-chars-per-token heuristic when tiktoken is unavailable).
+_TIKTOKEN_ENCODER = None
+_TIKTOKEN_TRIED = False
+
+
+def _get_encoder():
+    global _TIKTOKEN_ENCODER, _TIKTOKEN_TRIED
+    if _TIKTOKEN_TRIED:
+        return _TIKTOKEN_ENCODER
+    _TIKTOKEN_TRIED = True
+    try:
+        import tiktoken
+
+        _TIKTOKEN_ENCODER = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        _TIKTOKEN_ENCODER = None
+    return _TIKTOKEN_ENCODER
+
+
+def count_tokens(texts: List[str]) -> int:
+    """Total token count over ``texts`` (tiktoken when available, else estimate)."""
+    encoder = _get_encoder()
+    if encoder is not None:
+        try:
+            return sum(len(encoder.encode(t or "")) for t in texts)
+        except Exception:
+            pass
+    return sum(_estimate_tokens(t or "") for t in texts)
+
+
+def embedding_cost_usd(tokens: int) -> float:
+    """Approximate USD cost to embed ``tokens`` tokens (input-only pricing)."""
+    return tokens / 1000.0 * EMBEDDING_PRICE_PER_1K
+
+
 def extract_token_usage(response: Any, prompt: str, answer: str) -> Dict[str, int]:
     """
     Pull input/output token counts from a LangChain LLM response, falling back
@@ -315,6 +356,7 @@ def make_judge_prompt(question: str, ground_truth: str, answer: str) -> str:
         f"Expected value (ground truth): {ground_truth}\n"
         f"System answer: {answer}\n\n"
         "Treat the answer as CORRECT if it states the same value as the expected "
+        "The spud date is same as start kick off date"
         "value, allowing for differences in formatting, units, abbreviations, "
         "synonyms, or extra surrounding text. Apply these tolerances explicitly:\n"
         "- DATES: accept any answer whose date is within +/- 1 calendar day of the "
@@ -328,8 +370,39 @@ def make_judge_prompt(question: str, ground_truth: str, answer: str) -> str:
         "i.e. a few hundred metres). Sign/hemisphere (N/S, E/W) must agree.\n"
         "Treat it as INCORRECT if it gives a different value, contradicts the expected "
         "value, refers to a different entity, or says the information is unavailable.\n"
-        "Respond with exactly one word: YES if it is correct, or NO if it is not."
+        "Respond on a single line with the verdict word (YES if correct, NO if not), "
+        "a space, then your confidence as an integer from 0 to 100 indicating how "
+        "certain you are of that verdict. Examples: 'YES 95' or 'NO 80'."
     )
+
+
+def _parse_judge_verdict(verdict_text: str) -> Tuple[bool, Optional[int]]:
+    """Parse a '<YES|NO> <confidence>' judge reply into (is_match, confidence)."""
+    normalized = verdict_text.strip().lower()
+    is_match = normalized.startswith("yes") or re.match(r"^\W*yes\b", normalized) is not None
+    confidence: Optional[int] = None
+    match = re.search(r"(\d{1,3})", normalized)
+    if match:
+        confidence = max(0, min(100, int(match.group(1))))
+    return is_match, confidence
+
+
+def llm_judge_verdict(
+    llm: Any,
+    question: str,
+    ground_truth: str,
+    answer: str,
+) -> Tuple[bool, Optional[int], Dict[str, int]]:
+    """Judge whether ``answer`` matches ``ground_truth``.
+
+    Returns ``(is_match, confidence, token_usage)`` where ``confidence`` is the
+    LLM's self-reported certainty (0-100) of its verdict, or ``None`` if it did
+    not provide one.
+    """
+    prompt = make_judge_prompt(question, ground_truth, answer)
+    verdict_text, usage = invoke_llm_with_usage(llm, prompt)
+    is_match, confidence = _parse_judge_verdict(verdict_text)
+    return is_match, confidence, usage
 
 
 def llm_judge_match(
@@ -340,12 +413,10 @@ def llm_judge_match(
 ) -> Tuple[bool, Dict[str, int]]:
     """
     Use an LLM to judge whether ``answer`` semantically matches ``ground_truth``.
-    Returns ``(is_match, token_usage)``.
+    Returns ``(is_match, token_usage)``. (Thin wrapper over :func:`llm_judge_verdict`
+    for callers that don't need the confidence.)
     """
-    prompt = make_judge_prompt(question, ground_truth, answer)
-    verdict_text, usage = invoke_llm_with_usage(llm, prompt)
-    normalized = verdict_text.strip().lower()
-    is_match = normalized.startswith("yes") or re.match(r"^\W*yes\b", normalized) is not None
+    is_match, _confidence, usage = llm_judge_verdict(llm, question, ground_truth, answer)
     return is_match, usage
 
 

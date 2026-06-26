@@ -40,6 +40,7 @@ export default function App() {
   const [rerankedChunks, setRerankedChunks] = useState([]);
   const [answer, setAnswer] = useState("");
   const [usage, setUsage] = useState(null);
+  const [genCost, setGenCost] = useState(null);
   const [validation, setValidation] = useState(null);
   const [highlightPages, setHighlightPages] = useState([]);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
@@ -92,6 +93,7 @@ export default function App() {
     setRerankedChunks([]);
     setAnswer("");
     setUsage(null);
+    setGenCost(null);
     setValidation(null);
     setHighlightPages([]);
     setSelectedChunkId(null);
@@ -153,6 +155,7 @@ export default function App() {
               setStage("llm", "done");
               setAnswer(ev.answer || "");
               setUsage(ev.usage || null);
+              setGenCost(ev.cost_usd ?? null);
             } else if (ev.status === "skipped") {
               setStage("llm", "skipped");
             } else setStage("llm", "active");
@@ -169,6 +172,7 @@ export default function App() {
                 retrieval_hit: ev.retrieval_hit,
                 token_match: ev.token_match,
                 judge_match: ev.judge_match,
+                judge_confidence: ev.judge_confidence,
               });
             }
             break;
@@ -260,7 +264,7 @@ export default function App() {
 
           <div className="results">
             <div className="results-left">
-              <AnswerValidation answer={answer} usage={usage} validation={validation} />
+              <AnswerValidation answer={answer} usage={usage} genCost={genCost} validation={validation} />
               <ChunksView
                 title="Retrieved chunks"
                 chunks={retrievedChunks}

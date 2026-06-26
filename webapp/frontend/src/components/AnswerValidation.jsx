@@ -17,7 +17,7 @@ function Badge({ label, value }) {
   );
 }
 
-export default function AnswerValidation({ answer, usage, validation }) {
+export default function AnswerValidation({ answer, usage, genCost, validation }) {
   if (!answer && !validation) return null;
   return (
     <div className="answer-card">
@@ -28,6 +28,7 @@ export default function AnswerValidation({ answer, usage, validation }) {
           {usage && (
             <div className="answer-usage">
               tokens: {usage.input_tokens} in / {usage.output_tokens} out
+              {genCost != null && <> &middot; cost: ${genCost.toFixed(4)}</>}
             </div>
           )}
         </>
@@ -47,6 +48,18 @@ export default function AnswerValidation({ answer, usage, validation }) {
               <Badge label="Retrieval" value={validation.retrieval_hit} />
               <Badge label="Token" value={validation.token_match} />
               <Badge label="Judge" value={validation.judge_match} />
+            </div>
+          )}
+          {!validation.skipped && validation.judge_confidence != null && (
+            <div className="conf-row" title="How certain the LLM judge is of its YES/NO verdict">
+              <span className="conf-label">Judge confidence</span>
+              <span className="conf-bar">
+                <span
+                  className="conf-fill"
+                  style={{ width: `${validation.judge_confidence}%` }}
+                />
+              </span>
+              <span className="conf-val">{validation.judge_confidence}%</span>
             </div>
           )}
         </div>

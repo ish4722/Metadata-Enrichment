@@ -82,7 +82,7 @@ class RagConfig:
     load_max_workers: int = 4             # process-pool workers for load+chunk
 
     # ── retrieval (folder 2) ────────────────────────────────────────────────
-    retrieval_mode: str = "hybrid"         # "dense" | "hybrid"
+    retrieval_mode: str = "dense"         # "dense" | "hybrid"
     hybrid_alpha: float = 0.5             # 0 = pure BM25, 1 = pure dense
     top_k: int = 25
 
