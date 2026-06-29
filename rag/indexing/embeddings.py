@@ -471,7 +471,7 @@ class EmbeddingBackend:
         if self._mode == self._MODE_TFIDF:
             return self._tfidf.fit_transform(texts).toarray().astype(np.float32)
         if self._mode == self._MODE_OPENAI:
-            return np.array(self._openai.embed_documents(texts), dtype=np.float32)
+            return self._embed_openai(texts)
         return self._encode(texts, task="retrieval.passage")
 
     def transform(self, texts: List[str]) -> np.ndarray:
@@ -480,8 +480,30 @@ class EmbeddingBackend:
         if self._mode == self._MODE_TFIDF:
             return self._tfidf.transform(texts).toarray().astype(np.float32)
         if self._mode == self._MODE_OPENAI:
-            return np.array(self._openai.embed_documents(texts), dtype=np.float32)
+            return self._embed_openai(texts)
         return self._encode(texts, task="retrieval.query")
+
+    def _embed_openai(self, texts: List[str]) -> np.ndarray:
+        """Embed via the OpenAI client, refreshing the token once on auth failure.
+
+        The SLB token is a short-lived JWT; if it expires mid-build the embed call
+        fails with "JWT expired". We then rebuild the client (which fetches a fresh
+        token) and retry once so long builds don't die partway through.
+        """
+        try:
+            return np.array(self._openai.embed_documents(texts), dtype=np.float32)
+        except Exception as exc:  # noqa: BLE001
+            from rag.common.token_utils import is_auth_error
+
+            if not is_auth_error(exc):
+                raise
+            print("[auth] embedding token expired - refreshing and retrying once ...")
+            self._init_openai(
+                self._openai_model, self._openai_base_url, self._openai_partition_id
+            )
+            if self._openai is None:
+                raise
+            return np.array(self._openai.embed_documents(texts), dtype=np.float32)
 
     @property
     def backend_name(self) -> str:

@@ -101,9 +101,13 @@ class QueryResult:
 
 
 class BatchRunner:
-    def __init__(self, config: RagConfig, use_judge: bool = True):
+    def __init__(self, config: RagConfig, use_judge: bool = True, inject_name: bool = True):
         self.config = config
         self.use_judge = use_judge
+        # When True, name placeholders ("{well}") in queries are filled with the
+        # document's ground-truth well name; when False they collapse to "the well"
+        # (the no-name phrasing) so the same queries.txt drives both experiment arms.
+        self.inject_name = inject_name
         self._rerank_lock = threading.Lock()  # cross-encoder is not thread-safe
         # Embedding-cost accounting for this run (only the OpenAI backend is paid;
         # local backends embed for free).
@@ -215,12 +219,18 @@ class BatchRunner:
 
     # ── judge phase ───────────────────────────────────────────────────────────
     def _judge_one(self, qr: QueryResult) -> QueryResult:
-        if self.llm is None or not self.use_judge or not qr.answer or not qr.ground_truth:
+        if not self.use_judge or not qr.answer or qr.ground_truth in (None, ""):
+            qr.llm_hit = qr.token_match
+            return qr
+        # Coordinate labels use the deterministic comparator (no LLM needed);
+        # other labels need the LLM judge, so skip if it is unavailable.
+        is_coord = rag_evaluation.label_uses_coordinate_judge(qr.label)
+        if not is_coord and self.llm is None:
             qr.llm_hit = qr.token_match
             return qr
         t0 = time.perf_counter()
-        is_match, usage = rag_evaluation.llm_judge_match(
-            self.llm, qr.question, str(qr.ground_truth), qr.answer
+        is_match, usage = rag_evaluation.judge_match_dispatch(
+            self.llm, qr.label, qr.question, str(qr.ground_truth), qr.answer
         )
         qr.judge_match = is_match
         qr.judge_usage = usage
@@ -235,11 +245,18 @@ class BatchRunner:
         for doc in docs:
             with open(doc["ground_truth"], "r", encoding="utf-8") as f:
                 matched = json.load(f)
+            # Resolve this doc's well name (ground truth) for the inject arm; the
+            # no-inject arm uses the neutral "the well" so {well} -> "the well".
+            well_name = rag_evaluation.resolve_well_name(matched) if self.inject_name else "the well"
             for q in queries:
                 gt = rag_evaluation.extract_ground_truth(q["label"], matched)
+                question = rag_evaluation.inject_name(q["question"], well_name)
+                retrieval_query = rag_evaluation.inject_name(
+                    q.get("retrieval_query") or q["question"], well_name
+                )
                 tasks.append(QueryResult(
-                    doc_id=doc["id"], label=q["label"], question=q["question"],
-                    retrieval_query=q["retrieval_query"],
+                    doc_id=doc["id"], label=q["label"], question=question,
+                    retrieval_query=retrieval_query,
                     ground_truth=gt["value"], gt_tokens=gt["tokens"],
                 ))
 
@@ -432,6 +449,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--build-only", action="store_true", help="Only embed-once into Chroma, skip inference")
     p.add_argument("--embedding-model", default=None)
     p.add_argument("--chunk-strategy", default=None)
+    p.add_argument("--retrieval-mode", choices=["dense", "hybrid"], default=None,
+                   help="Override config.retrieval_mode")
+    p.add_argument("--hybrid-alpha", type=float, default=None,
+                   help="Override config.hybrid_alpha (0=BM25 .. 1=dense)")
+    p.add_argument("--inject-name", action=argparse.BooleanOptionalAction, default=True,
+                   help="Fill {well} placeholders with the ground-truth name (--no-inject-name to disable)")
     return p.parse_args()
 
 
@@ -444,6 +467,10 @@ def main() -> None:
         config.embedding_model = args.embedding_model
     if args.chunk_strategy:
         config.chunk_strategy = args.chunk_strategy
+    if args.retrieval_mode:
+        config.retrieval_mode = args.retrieval_mode
+    if args.hybrid_alpha is not None:
+        config.hybrid_alpha = args.hybrid_alpha
 
     matched, skipped = evaluate_all.discover_docs(args.docs_dir, args.matched_dir, only=args.only)
     print(f"Discovered {len(matched)} doc(s)" + (f", skipped {len(skipped)}" if skipped else ""))
@@ -451,8 +478,10 @@ def main() -> None:
         print("[error] No docs with matching ground truth.")
         sys.exit(1)
 
+    print(f"Config: retrieval_mode={config.retrieval_mode} hybrid_alpha={config.hybrid_alpha} "
+          f"reranker={config.use_reranker} inject_name={args.inject_name}")
     queries = rag_evaluation.parse_queries_file(args.queries)
-    runner = BatchRunner(config, use_judge=not args.no_judge)
+    runner = BatchRunner(config, use_judge=not args.no_judge, inject_name=args.inject_name)
 
     t0 = time.perf_counter()
     runner.build_all(matched)
@@ -469,10 +498,22 @@ def main() -> None:
                         embed_cost_usd=runner.embed_cost_usd)
     print_summary(summary)
 
+    run_config = {
+        "embedding_model": config.embedding_model,
+        "retrieval_mode": config.retrieval_mode,
+        "hybrid_alpha": config.hybrid_alpha,
+        "use_reranker": config.use_reranker,
+        "reranker_model": config.reranker_model,
+        "chunk_strategy": config.chunk_strategy,
+        "context_mode": config.context_mode,
+        "top_k": config.top_k,
+        "rerank_top_k": config.rerank_top_k,
+        "inject_name": args.inject_name,
+    }
     os.makedirs(os.path.dirname(args.summary_output) or ".", exist_ok=True)
     with open(args.summary_output, "w", encoding="utf-8") as f:
-        json.dump({"config_collection": config.chroma_collection, "summary": summary}, f,
-                  ensure_ascii=False, indent=2)
+        json.dump({"config_collection": config.chroma_collection, "run_config": run_config,
+                   "summary": summary}, f, ensure_ascii=False, indent=2)
     print(f"\nSaved summary -> {args.summary_output}")
 
 

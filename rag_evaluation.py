@@ -239,6 +239,28 @@ def extract_ground_truth(label: str, matched_json: Dict[str, Any]) -> Dict[str, 
     return extractor(data)
 
 
+# Placeholder tokens (in queries.txt / query text) replaced with the document's
+# ground-truth well/facility name, so a query can target a specific well -
+# e.g. "What is the spud date of {well} ?".
+NAME_PLACEHOLDERS = ("{facility_name}", "{well_name}", "{facility}", "{well}", "{name}")
+
+
+def inject_name(text: str, name: str) -> str:
+    """Replace any name placeholder in ``text`` with ``name``."""
+    if not text:
+        return text
+    for placeholder in NAME_PLACEHOLDERS:
+        if placeholder in text:
+            text = text.replace(placeholder, name)
+    return text
+
+
+def resolve_well_name(matched_json: Dict[str, Any], default: str = "the well") -> str:
+    """Resolve the document's ground-truth well/facility name (or ``default``)."""
+    facility = extract_ground_truth("facility name", matched_json)
+    return facility.get("value") or default
+
+
 def _normalize_for_match(text: Any) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(text).lower()).strip()
 
@@ -417,6 +439,192 @@ def llm_judge_match(
     for callers that don't need the confidence.)
     """
     is_match, _confidence, usage = llm_judge_verdict(llm, question, ground_truth, answer)
+    return is_match, usage
+
+
+# ---------------------------------------------------------------------------
+# Programmatic coordinate comparator (deterministic judge for lat+long)
+# ---------------------------------------------------------------------------
+
+# Query labels judged numerically (parse to decimal degrees + distance tolerance)
+# rather than by the LLM judge, which is strict/non-deterministic on coordinates.
+COORDINATE_LABELS = {"lat+long"}
+
+# Match tolerance in decimal degrees (~0.02 deg ≈ 2 km). Override via env.
+COORD_TOL_DEG = float(os.getenv("COORD_TOL_DEG", "0.02"))
+
+# DMS with hemisphere, e.g. 38° 57' 8.08" S  (minutes may be decimal; seconds
+# optional; tolerates markdown/punctuation like **S** before the hemisphere).
+_DMS_RE = re.compile(
+    r"(\d{1,3})\s*[°ºd:]\s*(\d{1,2}(?:\.\d+)?)\s*['′m:]\s*(\d{1,2}(?:\.\d+)?)?\s*[\"″s]?[\s*_`]*([NSEWnsew])\b"
+)
+# Hemisphere-PREFIX DMS, e.g. S 39° 20' 59.56" (hemisphere before the degrees).
+_DMS_PREFIX_RE = re.compile(
+    r"\b([NSEWnsew])\s*(\d{1,3})\s*[°ºd]\s*(\d{1,2}(?:\.\d+)?)\s*['′m]\s*(\d{1,2}(?:\.\d+)?)?\s*[\"″]?"
+)
+# A decimal number followed by a hemisphere letter, e.g. 38.95° S or 38.95 **S**
+_DEC_HEMI_RE = re.compile(r"([+-]?\d{1,3}(?:\.\d+)?)\s*°?[\s*_`]*([NSEWnsew])\b")
+# Plain signed decimal with >=3 fractional digits (filters page numbers etc.).
+_PLAIN_DEC_RE = re.compile(r"[+-]?\d{1,3}\.\d{3,}")
+
+
+def _dms_to_dd(deg: str, minute: str, sec: Optional[str], hemi: str) -> float:
+    val = float(deg) + float(minute or 0) / 60.0 + float(sec or 0) / 3600.0
+    return -val if hemi.upper() in ("S", "W") else val
+
+
+def parse_coordinates(text: str) -> List[Tuple[float, float]]:
+    """Extract (latitude, longitude) decimal-degree pairs from free text.
+
+    Handles DMS / degrees-decimal-minutes (with hemisphere), decimal-with-
+    hemisphere, and plain signed decimals (assumed lat, lon order) as a fallback.
+    """
+    if not text:
+        return []
+    lats: List[float] = []
+    lons: List[float] = []
+
+    for deg, minute, sec, hemi in _DMS_RE.findall(text):
+        val = _dms_to_dd(deg, minute, sec, hemi)
+        (lats if hemi.upper() in ("N", "S") else lons).append(val)
+
+    # Hemisphere-prefix DMS (e.g. "S 39° 20' 59.5\"") - only when suffix DMS missed.
+    if not (lats and lons):
+        for hemi, deg, minute, sec in _DMS_PREFIX_RE.findall(text):
+            val = _dms_to_dd(deg, minute, sec, hemi)
+            (lats if hemi.upper() in ("N", "S") else lons).append(val)
+
+    for num, hemi in _DEC_HEMI_RE.findall(text):
+        val = abs(float(num))
+        if hemi.upper() in ("S", "W"):
+            val = -val
+        (lats if hemi.upper() in ("N", "S") else lons).append(val)
+
+    if lats and lons:
+        return [(lats[0], lons[0])]
+
+    nums = [float(x) for x in _PLAIN_DEC_RE.findall(text)]
+    if len(nums) >= 2:
+        lat, lon = nums[0], nums[1]
+        if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
+            return [(lat, lon)]
+    return []
+
+
+# NZ projected grids -> WGS84. NZTM2000 = EPSG:2193, NZMG (NZGD49) = EPSG:27200.
+# Eastings/northings in NZ fall in disjoint ranges, so the smaller-range value is
+# the easting and the larger the northing.
+_NZ_EASTING = (1.0e6, 3.2e6)
+_NZ_NORTHING = (4.5e6, 7.0e6)
+_BIGNUM_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{6,}(?:\.\d+)?")
+_TRANSFORMERS: Dict[int, Any] = {}
+
+
+def _grid_to_wgs84(easting: float, northing: float, epsg: int) -> Tuple[float, float]:
+    from pyproj import Transformer
+
+    if epsg not in _TRANSFORMERS:
+        _TRANSFORMERS[epsg] = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+    lon, lat = _TRANSFORMERS[epsg].transform(easting, northing)
+    return lat, lon
+
+
+def _detect_nz_epsg(text: str, easting: float) -> int:
+    t = text.lower()
+    if "nztm" in t or "nzgd2000" in t or "epsg:2193" in t:
+        return 2193
+    if ("nzmg" in t or "map grid" in t or "nzgd49" in t or "nzgd1949" in t
+            or "epsg:27200" in t):
+        return 27200
+    # No datum keyword: guess by easting magnitude (NZTM eastings are < ~2.0e6).
+    return 2193 if easting < 2.0e6 else 27200
+
+
+def parse_grid_coordinates(text: str) -> List[Tuple[float, float]]:
+    """Convert NZ easting/northing (NZMG or NZTM) in ``text`` to (lat, lon) WGS84.
+
+    Used as a fallback when an answer reports only projected grid coordinates
+    instead of latitude/longitude. Returns [] if no grid pair is found.
+    """
+    if not text:
+        return []
+    nums: List[float] = []
+    for m in _BIGNUM_RE.finditer(text):
+        try:
+            nums.append(float(m.group(0).replace(",", "")))
+        except ValueError:
+            continue
+    eastings = [v for v in nums if _NZ_EASTING[0] <= v <= _NZ_EASTING[1]]
+    northings = [v for v in nums if _NZ_NORTHING[0] <= v <= _NZ_NORTHING[1]]
+    if not (eastings and northings):
+        return []
+    east, north = eastings[0], northings[0]
+    try:
+        epsg = _detect_nz_epsg(text, east)
+        lat, lon = _grid_to_wgs84(east, north, epsg)
+        # If the result isn't in NZ, the grid guess was wrong - try the other.
+        if not (-48.0 <= lat <= -34.0 and 165.0 <= lon <= 180.0):
+            other = 27200 if epsg == 2193 else 2193
+            lat2, lon2 = _grid_to_wgs84(east, north, other)
+            if -48.0 <= lat2 <= -34.0 and 165.0 <= lon2 <= 180.0:
+                lat, lon = lat2, lon2
+        return [(lat, lon)]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def coordinate_verdict(
+    ground_truth: str,
+    answer: str,
+    tol_deg: float = COORD_TOL_DEG,
+) -> Tuple[bool, Optional[int]]:
+    """Decide if ``answer`` states the same location as ``ground_truth``.
+
+    Both sides are parsed to decimal degrees (falling back to converting NZ grid
+    easting/northing to WGS84); a match means lat and lon are each within
+    ``tol_deg``. Returns ``(is_match, confidence)``.
+    """
+    exp = parse_coordinates(str(ground_truth)) or parse_grid_coordinates(str(ground_truth))
+    got = parse_coordinates(answer) or parse_grid_coordinates(answer)
+    if not exp or not got:
+        return False, None
+    elat, elon = exp[0]
+    best = min(max(abs(lat - elat), abs(lon - elon)) for lat, lon in got)
+    is_match = best <= tol_deg
+    conf = int(round(100 * max(0.0, 1.0 - best / (tol_deg * 4 if tol_deg else 1.0))))
+    return is_match, conf
+
+
+def label_uses_coordinate_judge(label: Optional[str]) -> bool:
+    return (label or "").strip().lower() in COORDINATE_LABELS
+
+
+def judge_verdict(
+    llm: Any,
+    label: Optional[str],
+    question: str,
+    ground_truth: str,
+    answer: str,
+) -> Tuple[bool, Optional[int], Dict[str, int]]:
+    """Label-aware verdict: programmatic comparator for coordinate labels,
+    otherwise the LLM judge. Returns ``(is_match, confidence, token_usage)``.
+    """
+    zero = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    if label_uses_coordinate_judge(label):
+        is_match, conf = coordinate_verdict(ground_truth, answer)
+        return is_match, conf, zero
+    return llm_judge_verdict(llm, question, ground_truth, answer)
+
+
+def judge_match_dispatch(
+    llm: Any,
+    label: Optional[str],
+    question: str,
+    ground_truth: str,
+    answer: str,
+) -> Tuple[bool, Dict[str, int]]:
+    """``judge_verdict`` for callers that only need ``(is_match, token_usage)``."""
+    is_match, _conf, usage = judge_verdict(llm, label, question, ground_truth, answer)
     return is_match, usage
 
 

@@ -5,12 +5,19 @@
 Thin wrapper around the internal SLB ChatOpenAI deployment. ``get_llm`` returns
 None when the LLM stack (langchain-openai + sauth_token) is unavailable, so the
 rest of the pipeline can degrade gracefully to retrieval-only.
+
+The SLB token is a short-lived JWT, so the client is wrapped in
+:class:`_RefreshingChatLLM`: on an auth/expired error it fetches a fresh token,
+rebuilds the underlying ChatOpenAI, and retries once. This keeps long-running
+processes (the web-app backend, batch runner) from dying mid-run with
+"JWT expired" after the token they captured at startup ages out.
 """
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
+from rag.common.token_utils import is_auth_error, strip_bearer
 from rag.config import RagConfig
 
 try:
@@ -21,19 +28,69 @@ except Exception:
     HAS_LLM = False
 
 
+class _RefreshingChatLLM:
+    """ChatOpenAI wrapper that refreshes the SLB token on auth failure.
+
+    Exposes ``.invoke(...)`` (used everywhere in the pipeline) and transparently
+    delegates any other attribute access to the live ChatOpenAI client.
+    """
+
+    def __init__(self, config: RagConfig):
+        self._config = config
+        self._client: Optional[Any] = None
+        # May be disabled at runtime if the model rejects a non-default temperature.
+        self._temperature: Optional[float] = getattr(config, "llm_temperature", 0.0)
+
+    def _build(self) -> Any:
+        token = strip_bearer(get_token())
+        kwargs = dict(
+            model=self._config.llm_model,
+            base_url=self._config.llm_base_url,
+            api_key=token,
+            default_headers={"slb-partition-id": self._config.partition_id},
+        )
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
+        return ChatOpenAI(**kwargs)
+
+    def _ensure(self) -> Any:
+        if self._client is None:
+            self._client = self._build()
+        return self._client
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return self._ensure().invoke(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            if is_auth_error(exc):
+                print("[auth] LLM token expired - refreshing and retrying once ...")
+                self._client = self._build()
+                return self._client.invoke(*args, **kwargs)
+            # Some reasoning models reject a non-default temperature - drop it and retry.
+            if self._temperature is not None and "temperature" in str(exc).lower():
+                print(f"[warn] model rejected temperature={self._temperature}; "
+                      "retrying without it.")
+                self._temperature = None
+                self._client = self._build()
+                return self._client.invoke(*args, **kwargs)
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        # Delegate anything we don't define (e.g. .stream, .batch) to the client.
+        return getattr(self._ensure(), name)
+
+
 def get_llm(config: RagConfig) -> Optional[Any]:
-    """Construct the ChatOpenAI client, or None if the LLM stack is missing."""
+    """Construct the (token-refreshing) ChatOpenAI client, or None if unavailable."""
     if not HAS_LLM:
         return None
-    token = get_token()
-    if token.startswith("Bearer "):
-        token = token[len("Bearer "):]
-    return ChatOpenAI(
-        model=config.llm_model,
-        base_url=config.llm_base_url,
-        api_key=token,
-        default_headers={"slb-partition-id": config.partition_id},
-    )
+    try:
+        llm = _RefreshingChatLLM(config)
+        llm._ensure()  # build now so an unavailable stack returns None up front
+        return llm
+    except Exception as exc:  # noqa: BLE001
+        print(f"[warn] LLM unavailable ({exc}) - continuing without generation.")
+        return None
 
 
 def answer_with_llm(llm: Any, prompt: str) -> str:

@@ -37,7 +37,7 @@ import rag_evaluation  # noqa: E402
 from rag.config import RagConfig  # noqa: E402
 from rag.inference.context_builder import build_context  # noqa: E402
 from rag.inference.llm import answer_with_llm, get_llm  # noqa: E402
-from rag.inference.prompt import make_prompt  # noqa: E402
+from rag.inference.prompt import inject_facility_name, make_prompt  # noqa: E402
 from rag.inference.query_pipeline import load_vector_store, retrieve_and_build_context  # noqa: E402
 
 
@@ -98,6 +98,10 @@ def main() -> None:
     if llm is None:
         print("[warn] LLM unavailable - scoring retrieval only (no generated answer / judge).")
 
+    # Ground-truth well/facility name for this doc; injected into the GENERATION
+    # question only (never retrieval). "" => no injection when name is missing.
+    well_name = rag_evaluation.resolve_well_name(matched, default="")
+
     rows = []
     for q in queries:
         label = q["label"]
@@ -114,10 +118,14 @@ def main() -> None:
             for i, (c, s) in enumerate(matches, 1):
                 print(f"  [{i}] score={s:.4f} page={c.page} section={c.section_path or c.block_type}")
 
-        # generate the answer with the natural-language question
+        # generate with a name-injected question (skip for the facility-name
+        # query, where injecting the name would give away the answer).
+        name_for_gen = "" if label.strip().lower() == "facility name" else well_name
+        gen_question = inject_facility_name(question, name_for_gen)
+
         answer = ""
         if llm is not None and context_items:
-            prompt = make_prompt(question, context_items)
+            prompt = make_prompt(gen_question, context_items)
             answer = answer_with_llm(llm, prompt)
 
         token_match = rag_evaluation.answer_is_correct(answer, gt["tokens"]) if answer else False

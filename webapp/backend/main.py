@@ -159,12 +159,16 @@ async def query(request: Request) -> StreamingResponse:
     question = (body.get("question") or "").strip()
     retrieval_query = (body.get("retrieval_query") or "").strip() or question
 
-    # Resolve ground truth for predefined (validatable) queries.
+    # Resolve ground truth for predefined (validatable) queries, and fill in any
+    # name placeholders (e.g. "{well}") using the document's ground-truth name.
+    matched = _load_matched(doc_id)
     ground_truth: Optional[Dict[str, Any]] = None
-    if label:
-        matched = _load_matched(doc_id)
-        if matched is not None:
-            ground_truth = rag_evaluation.extract_ground_truth(label, matched)
+    if label and matched is not None:
+        ground_truth = rag_evaluation.extract_ground_truth(label, matched)
+    if matched is not None:
+        well_name = rag_evaluation.resolve_well_name(matched)
+        question = rag_evaluation.inject_name(question, well_name)
+        retrieval_query = rag_evaluation.inject_name(retrieval_query, well_name)
 
     if not question:
         raise HTTPException(status_code=400, detail="A question (or label) is required.")

@@ -82,8 +82,8 @@ class RagConfig:
     load_max_workers: int = 4             # process-pool workers for load+chunk
 
     # ── retrieval (folder 2) ────────────────────────────────────────────────
-    retrieval_mode: str = "dense"         # "dense" | "hybrid"
-    hybrid_alpha: float = 0.5             # 0 = pure BM25, 1 = pure dense
+    retrieval_mode: str = "hybrid"         # "dense" | "hybrid"
+    hybrid_alpha: float = 0.85             # 0 = pure BM25, 1 = pure dense
     top_k: int = 25
 
     # ── reranker  ← SWAP RERANKER HERE ──────────────────────────────────────
@@ -97,6 +97,10 @@ class RagConfig:
 
     # ── LLM  ← SWAP LLM HERE ────────────────────────────────────────────────
     llm_model: str = "gpt-5.2"
+    # Sampling temperature for generation + judge. 0.0 = deterministic (recommended
+    # for reproducible evaluation). Set to None to omit it (some reasoning models
+    # only accept the default); the client falls back automatically if rejected.
+    llm_temperature: Optional[float] = 0.0
     llm_base_url: str = (
         "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1"
     )

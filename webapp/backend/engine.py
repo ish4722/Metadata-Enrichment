@@ -263,10 +263,13 @@ class RagEngine:
                 token_match = rag_evaluation.answer_is_correct(answer, gt_tokens) if answer else False
                 judge_match = None
                 judge_confidence = None
-                if llm is not None and answer:
+                is_coord = rag_evaluation.label_uses_coordinate_judge(label)
+                if answer and (is_coord or llm is not None):
                     try:
-                        judge_match, judge_confidence, _usage = rag_evaluation.llm_judge_verdict(
-                            llm, question, str(gt_value), answer
+                        # Coordinate labels use a deterministic comparator; others
+                        # use the LLM judge.
+                        judge_match, judge_confidence, _usage = rag_evaluation.judge_verdict(
+                            llm, label, question, str(gt_value), answer
                         )
                     except Exception as exc:  # noqa: BLE001
                         judge_match = None
