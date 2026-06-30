@@ -7,6 +7,7 @@ import PipelineFlow from "./components/PipelineFlow.jsx";
 import ChunksView from "./components/ChunksView.jsx";
 import AnswerValidation from "./components/AnswerValidation.jsx";
 import PdfViewer from "./components/PdfViewer.jsx";
+import Home from "./components/Home.jsx";
 
 const STAGES_RESET = {
   embed: "pending",
@@ -18,6 +19,7 @@ const STAGES_RESET = {
 };
 
 export default function App() {
+  const [view, setView] = useState("home");
   const [documents, setDocuments] = useState([]);
   const [models, setModels] = useState([]);
   const [queries, setQueries] = useState([]);
@@ -54,7 +56,9 @@ export default function App() {
     setDocuments(documents);
   }
 
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
+    if (view !== "explorer" || loaded) return;
     (async () => {
       try {
         await refreshDocuments();
@@ -63,11 +67,12 @@ export default function App() {
         setEmbeddingModel(m.default || m.models[0]);
         const q = await api.queries();
         setQueries(q.queries);
+        setLoaded(true);
       } catch (e) {
         setError(`Failed to reach backend: ${e.message}`);
       }
     })();
-  }, []);
+  }, [view, loaded]);
 
   async function handleBuild() {
     if (!selectedDocId) return;
@@ -201,9 +206,21 @@ export default function App() {
     [selectedDocId, built, running, building]
   );
 
+  if (view === "home") {
+    return <Home onOpenExplorer={() => setView("explorer")} />;
+  }
+
   return (
     <div className="app">
       <header className="topbar">
+        <button type="button" className="home-back" onClick={() => setView("home")}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Home
+        </button>
         <h1>RAG Explorer</h1>
         <span className="subtle">
           {"PDF -> datalab -> embeddings -> retrieve -> rerank -> answer -> validate"}

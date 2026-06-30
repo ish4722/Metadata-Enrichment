@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Goldset Review</title>
+  <style>
+    :root {
+      --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --border: #2a2f3a;
+      --text: #e6e9ef; --muted: #99a1b3; --accent: #4f8cff;
+      --ok: #2ecc71; --bad: #ff5c5c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+    }
+    header {
+      padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+      display: flex; align-items: baseline; gap: 12px;
+    }
+    header h1 { font-size: 16px; margin: 0; }
+    header .sub { color: var(--muted); font-size: 12px; }
+    .layout { display: grid; grid-template-columns: 220px 1fr 1fr; height: calc(100vh - 43px); }
+    .col { overflow-y: auto; padding: 10px; }
+    .col.docs { border-right: 1px solid var(--border); background: var(--panel); }
+    .col.fields { border-right: 1px solid var(--border); }
+    .doc-item {
+      padding: 7px 9px; border-radius: 6px; cursor: pointer; font-size: 13px;
+      display: flex; justify-content: space-between; align-items: center; gap: 6px;
+    }
+    .doc-item:hover { background: var(--panel2); }
+    .doc-item.active { background: var(--accent); color: #fff; }
+    .doc-counts { font-size: 11px; color: var(--muted); }
+    .doc-item.active .doc-counts { color: #e8eeff; }
+    .field { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      margin-bottom: 12px; overflow: hidden; }
+    .field-head { padding: 9px 11px; background: var(--panel2); }
+    .field-label { font-weight: 600; font-size: 13px; }
+    .field-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .field-value { color: var(--text); }
+    .status-pill { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 10px;
+      border: 1px solid var(--border); margin-left: 6px; text-transform: uppercase; letter-spacing: .04em; }
+    .chunk { border-top: 1px solid var(--border); padding: 9px 11px; cursor: pointer; }
+    .chunk:hover { background: var(--panel2); }
+    .chunk.active { background: #20283a; }
+    .chunk-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .mark { font-size: 15px; width: 18px; text-align: center; }
+    .mark.ok { color: var(--ok); } .mark.bad { color: var(--bad); }
+    .chunk-id { font-size: 11px; color: var(--muted); }
+    .chunk-page { font-size: 11px; color: var(--muted); margin-left: auto; }
+    .chunk-text { font-size: 12px; line-height: 1.45; color: #cdd3df; max-height: 90px;
+      overflow: hidden; white-space: pre-wrap; }
+    .chunk-actions { margin-top: 7px; display: flex; gap: 6px; }
+    .btn { font-size: 11px; padding: 3px 9px; border-radius: 5px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); cursor: pointer; }
+    .btn:hover { border-color: var(--accent); }
+    .btn.ok.sel { background: var(--ok); border-color: var(--ok); color: #08210f; }
+    .btn.bad.sel { background: var(--bad); border-color: var(--bad); color: #2a0606; }
+    .btn.drop:hover { border-color: var(--bad); color: var(--bad); }
+    .col.pdf { background: #0b0d11; }
+    .pdf-wrap { position: relative; display: inline-block; }
+    .pdf-wrap canvas { display: block; border: 1px solid var(--border); }
+    .hl { position: absolute; background: rgba(79,140,255,.28); border: 1.5px solid var(--accent);
+      border-radius: 2px; pointer-events: none; }
+    .empty { color: var(--muted); font-size: 13px; padding: 20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Goldset Review</h1>
+    <span class="sub">tick = correct (grade 2) · cross = wrong (grade 1) · edits save to retrieval_goldset.json</span>
+  </header>
+  <div class="layout">
+    <div class="col docs" id="docs"></div>
+    <div class="col fields" id="fields"><div class="empty">Select a document.</div></div>
+    <div class="col pdf" id="pdf"><div class="empty">Select a chunk to view it on the PDF.</div></div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs";
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs";
+
+    const RENDER_WIDTH = 640;
+    const docsEl = document.getElementById("docs");
+    const fieldsEl = document.getElementById("fields");
+    const pdfEl = document.getElementById("pdf");
+
+    let currentDoc = null;
+    let pdfDocCache = { id: null, doc: null };
+    let activeChunkId = null;
+
+    async function getJson(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${url} -> ${r.status}`);
+      return r.json();
+    }
+
+    async function loadDocs() {
+      const { documents } = await getJson("/api/goldset/docs");
+      docsEl.innerHTML = "";
+      documents.forEach((d) => {
+        const el = document.createElement("div");
+        el.className = "doc-item";
+        el.dataset.id = d.doc_id;
+        el.innerHTML = `<span>${d.doc_id}</span>` +
+          `<span class="doc-counts">${d.correct}&#10003; ${d.wrong}&#10007;</span>`;
+        el.onclick = () => selectDoc(d.doc_id);
+        docsEl.appendChild(el);
+      });
+    }
+
+    async function selectDoc(docId) {
+      currentDoc = docId;
+      activeChunkId = null;
+      [...docsEl.children].forEach((c) => c.classList.toggle("active", c.dataset.id === docId));
+      pdfEl.innerHTML = `<div class="empty">Select a chunk to view it on the PDF.</div>`;
+      fieldsEl.innerHTML = `<div class="empty">Loading...</div>`;
+      const detail = await getJson(`/api/goldset/doc/${docId}`);
+      renderFields(detail);
+    }
+
+    function statusColor(status) {
+      if (status === "answerable") return "var(--ok)";
+      if (status === "only_wrong") return "var(--bad)";
+      return "var(--muted)";
+    }
+
+    function renderFields(detail) {
+      fieldsEl.innerHTML = "";
+      if (!detail.fields.length) {
+        fieldsEl.innerHTML = `<div class="empty">No fields in the gold set for this doc.</div>`;
+        return;
+      }
+      detail.fields.forEach((f) => {
+        const field = document.createElement("div");
+        field.className = "field";
+        field.dataset.label = f.label;
+        field.appendChild(fieldHead(f));
+        f.chunks.forEach((c) => field.appendChild(chunkCard(f.label, c)));
+        if (!f.chunks.length) {
+          const e = document.createElement("div");
+          e.className = "chunk"; e.style.cursor = "default";
+          e.innerHTML = `<span class="chunk-id">no relevant chunks</span>`;
+          field.appendChild(e);
+        }
+        fieldsEl.appendChild(field);
+      });
+    }
+
+    function fieldHead(f) {
+      const head = document.createElement("div");
+      head.className = "field-head";
+      const val = f.value === null || f.value === undefined ? "(no ground truth)" : f.value;
+      head.innerHTML =
+        `<div class="field-label">${f.label}` +
+        `<span class="status-pill" style="color:${statusColor(f.status)}">${f.status || ""}</span></div>` +
+        `<div class="field-meta">value: <span class="field-value"></span></div>`;
+      head.querySelector(".field-value").textContent = val;
+      return head;
+    }
+
+    function chunkCard(label, c) {
+      const card = document.createElement("div");
+      card.className = "chunk";
+      card.dataset.chunkId = c.chunk_id;
+      const isOk = c.grade === 2;
+      card.innerHTML =
+        `<div class="chunk-top">` +
+          `<span class="mark ${isOk ? "ok" : "bad"}">${isOk ? "&#10003;" : "&#10007;"}</span>` +
+          `<span class="chunk-id"></span>` +
+          `<span class="chunk-page">p.${c.page}</span>` +
+        `</div>` +
+        `<div class="chunk-text"></div>` +
+        `<div class="chunk-actions">` +
+          `<button class="btn ok ${isOk ? "sel" : ""}" data-act="correct">&#10003; correct</button>` +
+          `<button class="btn bad ${!isOk ? "sel" : ""}" data-act="wrong">&#10007; wrong</button>` +
+          `<button class="btn drop" data-act="drop">drop</button>` +
+        `</div>`;
+      card.querySelector(".chunk-id").textContent = c.chunk_id;
+      card.querySelector(".chunk-text").textContent = c.text || "(text unavailable)";
+      card.onclick = (e) => {
+        if (e.target.closest("button")) return;
+        showChunk(card, c);
+      };
+      card.querySelectorAll("button").forEach((b) => {
+        b.onclick = (e) => {
+          e.stopPropagation();
+          edit(label, c.chunk_id, b.dataset.act);
+        };
+      });
+      return card;
+    }
+
+    async function edit(label, chunkId, action) {
+      try {
+        const r = await fetch("/api/goldset/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ doc_id: currentDoc, label, chunk_id: chunkId, action }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const updated = await r.json();
+        replaceField(updated);
+        loadDocs().then(() =>
+          [...docsEl.children].forEach((c) => c.classList.toggle("active", c.dataset.id === currentDoc))
+        );
+      } catch (err) {
+        alert("Edit failed: " + err.message);
+      }
+    }
+
+    function replaceField(updated) {
+      const field = fieldsEl.querySelector(`.field[data-label="${cssEscape(updated.label)}"]`);
+      if (!field) return;
+      const fresh = document.createElement("div");
+      fresh.className = "field";
+      fresh.dataset.label = updated.label;
+      fresh.appendChild(fieldHead(updated));
+      updated.chunks.forEach((c) => fresh.appendChild(chunkCard(updated.label, c)));
+      if (!updated.chunks.length) {
+        const e = document.createElement("div");
+        e.className = "chunk"; e.style.cursor = "default";
+        e.innerHTML = `<span class="chunk-id">no relevant chunks</span>`;
+        fresh.appendChild(e);
+      }
+      field.replaceWith(fresh);
+    }
+
+    function cssEscape(s) { return s.replace(/"/g, '\\"'); }
+
+    async function getPdf(docId) {
+      if (pdfDocCache.id === docId && pdfDocCache.doc) return pdfDocCache.doc;
+      const task = pdfjsLib.getDocument({ url: `/api/pdf/${docId}` });
+      const doc = await task.promise;
+      pdfDocCache = { id: docId, doc };
+      return doc;
+    }
+
+    async function showChunk(card, c) {
+      activeChunkId = c.chunk_id;
+      [...fieldsEl.querySelectorAll(".chunk")].forEach((el) =>
+        el.classList.toggle("active", el === card));
+      if (!c.rects || !c.rects.length) {
+        pdfEl.innerHTML = `<div class="empty">No bounding box available for this chunk (page ${c.page}).</div>`;
+        return;
+      }
+      pdfEl.innerHTML = `<div class="empty">Rendering page...</div>`;
+      try {
+        const pdf = await getPdf(currentDoc);
+        // Group rects by page; render each referenced page.
+        const byPage = {};
+        c.rects.forEach((r) => { (byPage[r.page] = byPage[r.page] || []).push(r); });
+        pdfEl.innerHTML = "";
+        for (const pageStr of Object.keys(byPage).sort((a, b) => a - b)) {
+          const page0 = Number(pageStr);
+          const pageNum = page0 + 1;
+          if (pageNum < 1 || pageNum > pdf.numPages) continue;
+          const pdfPage = await pdf.getPage(pageNum);
+          const base = pdfPage.getViewport({ scale: 1 });
+          const scale = RENDER_WIDTH / base.width;
+          const viewport = pdfPage.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext("2d");
+          await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+
+          const wrap = document.createElement("div");
+          wrap.className = "pdf-wrap";
+          const lbl = document.createElement("div");
+          lbl.className = "field-meta";
+          lbl.style.margin = "0 0 4px 2px";
+          lbl.textContent = `Page ${pageNum}`;
+          wrap.appendChild(canvas);
+          byPage[pageStr].forEach((r) => {
+            const hl = document.createElement("div");
+            hl.className = "hl";
+            hl.style.left = (r.x * 100) + "%";
+            hl.style.top = (r.y * 100) + "%";
+            hl.style.width = (r.w * 100) + "%";
+            hl.style.height = (r.h * 100) + "%";
+            wrap.appendChild(hl);
+          });
+          const block = document.createElement("div");
+          block.style.marginBottom = "14px";
+          block.appendChild(lbl);
+          block.appendChild(wrap);
+          pdfEl.appendChild(block);
+        }
+        if (!pdfEl.children.length) {
+          pdfEl.innerHTML = `<div class="empty">Could not render page.</div>`;
+        }
+      } catch (err) {
+        pdfEl.innerHTML = `<div class="empty">Failed to render PDF: ${err.message}</div>`;
+      }
+    }
+
+    loadDocs().catch((e) => {
+      docsEl.innerHTML = `<div class="empty">Failed to load: ${e.message}</div>`;
+    });
+  </script>
+</body>
+</html>

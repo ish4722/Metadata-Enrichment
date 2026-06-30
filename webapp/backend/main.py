@@ -39,6 +39,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 import rag_evaluation  # noqa: E402
 
 import docs  # noqa: E402
+import goldset_review  # noqa: E402
 from engine import ENGINE  # noqa: E402
 
 app = FastAPI(title="RAG Explorer")
@@ -52,6 +53,7 @@ app.add_middleware(
 )
 
 QUERIES_PATH = os.path.join(_REPO_ROOT, "queries.txt")
+STATIC_DIR = os.path.join(_BACKEND_DIR, "static")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -128,6 +130,46 @@ async def upload_pdf(file: UploadFile) -> JSONResponse:
     content = await file.read()
     info = docs.save_uploaded_pdf(file.filename or "upload.pdf", content)
     return JSONResponse(info)
+
+
+# ── goldset review ───────────────────────────────────────────────────────────
+@app.get("/review")
+def review_page() -> Response:
+    path = os.path.join(STATIC_DIR, "review.html")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="review.html not found.")
+    return FileResponse(path, media_type="text/html")
+
+
+@app.get("/api/goldset/docs")
+def goldset_docs() -> Dict[str, Any]:
+    return {"documents": goldset_review.list_docs()}
+
+
+@app.get("/api/goldset/doc/{doc_id}")
+def goldset_doc(doc_id: str) -> Dict[str, Any]:
+    try:
+        return goldset_review.doc_detail(doc_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"No gold-set entry for '{doc_id}'.")
+
+
+@app.post("/api/goldset/edit")
+async def goldset_edit(request: Request) -> Dict[str, Any]:
+    body = await request.json()
+    doc_id = body.get("doc_id")
+    label = body.get("label")
+    chunk_id = body.get("chunk_id")
+    action = body.get("action")
+    if not all([doc_id, label, chunk_id, action]):
+        raise HTTPException(status_code=400,
+                            detail="doc_id, label, chunk_id and action are required.")
+    try:
+        return goldset_review.apply_edit(doc_id, label, chunk_id, action)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 # ── build ──────────────────────────────────────────────────────────────────

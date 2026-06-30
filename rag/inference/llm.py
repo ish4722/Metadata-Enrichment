@@ -75,6 +75,45 @@ class _RefreshingChatLLM:
                 return self._client.invoke(*args, **kwargs)
             raise
 
+    async def ainvoke(self, *args: Any, max_retries: int = 5, **kwargs: Any) -> Any:
+        """Async invoke with token-refresh, temperature fallback, and 429 backoff.
+
+        Mirrors :meth:`invoke` but uses the client's ``ainvoke`` so many calls can
+        run concurrently under an external semaphore. Token refresh matters here:
+        a long async run can outlive the JWT captured at startup.
+        """
+        import asyncio
+
+        delay = 2.0
+        for attempt in range(max_retries):
+            try:
+                return await self._ensure().ainvoke(*args, **kwargs)
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc).lower()
+                if is_auth_error(exc):
+                    self._client = self._build()
+                    continue
+                if self._temperature is not None and "temperature" in msg:
+                    self._temperature = None
+                    self._client = self._build()
+                    continue
+                # Rate limit / transient network: exponential backoff then retry.
+                transient = (
+                    "429" in msg or "rate limit" in msg or "too many requests" in msg
+                    or "timeout" in msg or "timed out" in msg
+                    or "connection error" in msg or "connecterror" in msg
+                    or "apiconnectionerror" in msg or "getaddrinfo" in msg
+                    or "temporarily" in msg or "service unavailable" in msg
+                    or "502" in msg or "503" in msg or "504" in msg
+                )
+                if transient and attempt < max_retries - 1:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 30.0)
+                    continue
+                raise
+        # Final attempt without swallowing the error.
+        return await self._ensure().ainvoke(*args, **kwargs)
+
     def __getattr__(self, name: str) -> Any:
         # Delegate anything we don't define (e.g. .stream, .batch) to the client.
         return getattr(self._ensure(), name)
