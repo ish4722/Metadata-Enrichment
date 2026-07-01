@@ -214,7 +214,7 @@ class BatchRunner:
         qr.answer = answer
         qr.gen_usage = usage
         qr.gen_time_s = time.perf_counter() - t0
-        qr.token_match = rag_evaluation.answer_is_correct(answer, qr.gt_tokens)
+        qr.token_match = rag_evaluation.llm_answer_is_correct(answer, qr.gt_tokens)
         return qr
 
     # ── judge phase ───────────────────────────────────────────────────────────

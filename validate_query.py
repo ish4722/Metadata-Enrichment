@@ -128,10 +128,12 @@ def main() -> None:
             prompt = make_prompt(gen_question, context_items)
             answer = answer_with_llm(llm, prompt)
 
-        token_match = rag_evaluation.answer_is_correct(answer, gt["tokens"]) if answer else False
+        token_match = rag_evaluation.llm_answer_is_correct(answer, gt["tokens"]) if answer else False
         judge_match = None
         if use_judge and gt["value"] is not None and answer:
-            judge_match, _usage = rag_evaluation.llm_judge_match(llm, question, str(gt["value"]), answer)
+            judge_match, _usage = rag_evaluation.llm_judge_match(
+                llm, question, str(gt["value"]), answer
+            )
 
         rows.append({
             "label": label,

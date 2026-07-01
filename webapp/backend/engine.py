@@ -260,7 +260,7 @@ class RagEngine:
             gt_tokens = (ground_truth or {}).get("tokens") or []
             if label and gt_value is not None:
                 retrieval_hit = rag_evaluation.answer_is_correct(raw_text, gt_tokens)
-                token_match = rag_evaluation.answer_is_correct(answer, gt_tokens) if answer else False
+                token_match = rag_evaluation.llm_answer_is_correct(answer, gt_tokens) if answer else False
                 judge_match = None
                 judge_confidence = None
                 is_coord = rag_evaluation.label_uses_coordinate_judge(label)

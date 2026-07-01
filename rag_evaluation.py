@@ -273,6 +273,23 @@ def answer_is_correct(answer: str, tokens: List[str]) -> bool:
     return all(_normalize_for_match(tok) in normalized_answer for tok in tokens if tok)
 
 
+def answer_text_for_scoring(raw_answer: str) -> str:
+    """Plain answer text for token/judge scoring (unwraps JSON generator replies)."""
+    if not raw_answer:
+        return raw_answer or ""
+    try:
+        from rag.inference.prompt import parse_generator_response
+
+        return parse_generator_response(raw_answer)
+    except ImportError:
+        return raw_answer
+
+
+def llm_answer_is_correct(raw_answer: str, tokens: List[str]) -> bool:
+    """Token match against an LLM reply (JSON or plain text)."""
+    return answer_is_correct(answer_text_for_scoring(raw_answer), tokens)
+
+
 # ---------------------------------------------------------------------------
 # Token usage + cost
 # ---------------------------------------------------------------------------
@@ -421,6 +438,7 @@ def llm_judge_verdict(
     LLM's self-reported certainty (0-100) of its verdict, or ``None`` if it did
     not provide one.
     """
+    answer = answer_text_for_scoring(answer)
     prompt = make_judge_prompt(question, ground_truth, answer)
     verdict_text, usage = invoke_llm_with_usage(llm, prompt)
     is_match, confidence = _parse_judge_verdict(verdict_text)
@@ -584,6 +602,7 @@ def coordinate_verdict(
     easting/northing to WGS84); a match means lat and lon are each within
     ``tol_deg``. Returns ``(is_match, confidence)``.
     """
+    answer = answer_text_for_scoring(answer)
     exp = parse_coordinates(str(ground_truth)) or parse_grid_coordinates(str(ground_truth))
     got = parse_coordinates(answer) or parse_grid_coordinates(answer)
     if not exp or not got:
@@ -987,7 +1006,7 @@ def run_evaluation(
                 llm_input_tokens += usage.get("input_tokens", 0)
                 llm_output_tokens += usage.get("output_tokens", 0)
                 llm_cost += token_cost_usd(usage.get("input_tokens", 0), usage.get("output_tokens", 0))
-                token_hit = answer_is_correct(answer, tokens)
+                token_hit = llm_answer_is_correct(answer, tokens)
 
                 # Optional LLM judge: confirm a semantic match (handles format
                 # differences the literal token check misses).
