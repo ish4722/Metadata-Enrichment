@@ -84,6 +84,7 @@ def build_section_chunks(
         pages = sorted({b.page for b in ordered})
         parent_id = key_to_parent.get(key, "")
         siblings = [n for n in parent_to_children.get(parent_id, []) if n != key_to_name.get(key)]
+        hierarchy_ids = list(rep.metadata.get("section_hierarchy_ids", []))
         prefix = f"{breadcrumb}\n\n" if breadcrumb else ""
 
         for part in split_text_into_chunks(body, chunk_size, overlap):
@@ -103,6 +104,7 @@ def build_section_chunks(
                     leaf_section_id=rep.leaf_section_id,
                     parent_section_id=parent_id,
                     order=ordered[0].order,
+                    section_hierarchy_ids=hierarchy_ids,
                     metadata={
                         "chunk_id": cid,
                         "source": rep.source,
@@ -112,6 +114,7 @@ def build_section_chunks(
                         "section_name": key_to_name.get(key, ""),
                         "leaf_section_id": rep.leaf_section_id,
                         "parent_section_id": parent_id,
+                        "section_hierarchy_ids": hierarchy_ids,
                         "sibling_sections": siblings,
                         "text_length": len(text),
                     },

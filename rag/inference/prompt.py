@@ -83,6 +83,28 @@ def _history_block(chat_history: Optional[List[Dict[str, str]]]) -> str:
     return "\n".join(lines) + "\n\n"
 
 
+def _extract_json_object(raw: str) -> Optional[Dict[str, Any]]:
+    """Return the first JSON object parsed from ``raw`` (whole string or embedded)."""
+    if not raw or not raw.strip():
+        return None
+    text = raw.strip()
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            return obj
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            obj = json.loads(match.group(0))
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def parse_generator_response(raw: str) -> str:
     """Extract the ``answer`` field from a JSON generator reply for scoring.
 
@@ -90,23 +112,41 @@ def parse_generator_response(raw: str) -> str:
     """
     if not raw or not raw.strip():
         return raw or ""
-    text = raw.strip()
-    for candidate in (text,):
-        try:
-            obj = json.loads(candidate)
-            if isinstance(obj, dict) and obj.get("answer") is not None:
-                return str(obj["answer"])
-        except json.JSONDecodeError:
-            pass
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        try:
-            obj = json.loads(match.group(0))
-            if isinstance(obj, dict) and obj.get("answer") is not None:
-                return str(obj["answer"])
-        except json.JSONDecodeError:
-            pass
+    obj = _extract_json_object(raw)
+    if obj is not None and obj.get("answer") is not None:
+        return str(obj["answer"])
     return raw
+
+
+def parse_generator_json(raw: str) -> Dict[str, Any]:
+    """Parse a generator reply into ``{answer, available, source_pages}``.
+
+    Robust to models that wrap the JSON in prose or markdown fences. When the
+    ``available`` flag is missing or malformed it defaults to ``True`` whenever a
+    non-empty answer is present, so escalation does not loop forever on a reply
+    that simply omitted the flag.
+    """
+    obj = _extract_json_object(raw)
+    if obj is None:
+        text = (raw or "").strip()
+        return {"answer": text, "available": bool(text), "source_pages": []}
+
+    answer = obj.get("answer")
+    answer_str = "" if answer is None else str(answer)
+
+    available = obj.get("available")
+    if isinstance(available, bool):
+        avail = available
+    elif isinstance(available, str):
+        avail = available.strip().lower() in {"true", "yes", "1"}
+    else:
+        avail = bool(answer_str.strip())
+
+    source_pages = obj.get("source_pages")
+    if not isinstance(source_pages, list):
+        source_pages = []
+
+    return {"answer": answer_str, "available": avail, "source_pages": source_pages}
 
 
 def make_prompt(

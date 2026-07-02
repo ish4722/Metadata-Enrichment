@@ -173,8 +173,24 @@ def answer_query(
     if llm is not None:
         if verbose:
             print("\nGenerating answer with LLM ...")
-        prompt = make_prompt(query, context_items, chat_history=chat_history)
-        answer = answer_with_llm(llm, prompt)
+        if config.context_mode == "hierarchical":
+            from rag.inference.hierarchical_answer import answer_with_hierarchical_context
+
+            def _invoke(client: Any, prompt_text: str) -> Tuple[str, Dict[str, int]]:
+                return answer_with_llm(client, prompt_text), {}
+
+            doc_id = matches[0][0].metadata.get("doc_id", "")
+            result = answer_with_hierarchical_context(
+                llm, query, matches, store, doc_id, config, _invoke
+            )
+            answer = result.answer
+            context_items = result.context_items
+            if verbose:
+                print(f"(escalated to depth {result.escalation_depth} "
+                      f"in {result.llm_calls} LLM call(s))")
+        else:
+            prompt = make_prompt(query, context_items, chat_history=chat_history)
+            answer = answer_with_llm(llm, prompt)
         if verbose:
             print("\nLLM answer:\n", answer)
     elif verbose:

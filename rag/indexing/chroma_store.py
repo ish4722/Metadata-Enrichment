@@ -79,6 +79,9 @@ def _chunk_to_metadata(chunk: Chunk, doc_id: str) -> Dict[str, Any]:
         "order": int(chunk.order),
         "sibling_sections_json": json.dumps(chunk.metadata.get("sibling_sections", [])),
         "pages_json": json.dumps(chunk.metadata.get("pages", [chunk.page])),
+        "section_hierarchy_ids_json": json.dumps(
+            chunk.section_hierarchy_ids or chunk.metadata.get("section_hierarchy_ids", [])
+        ),
     }
     return md
 
@@ -92,6 +95,10 @@ def _metadata_to_chunk(chunk_id: str, text: str, md: Dict[str, Any]) -> Chunk:
         pages = json.loads(md.get("pages_json", "[]"))
     except (json.JSONDecodeError, TypeError):
         pages = []
+    try:
+        hierarchy_ids = json.loads(md.get("section_hierarchy_ids_json", "[]"))
+    except (json.JSONDecodeError, TypeError):
+        hierarchy_ids = []
     return Chunk(
         id=chunk_id,
         source=md.get("source", ""),
@@ -102,10 +109,12 @@ def _metadata_to_chunk(chunk_id: str, text: str, md: Dict[str, Any]) -> Chunk:
         leaf_section_id=md.get("leaf_section_id", ""),
         parent_section_id=md.get("parent_section_id", ""),
         order=int(md.get("order", 0)),
+        section_hierarchy_ids=hierarchy_ids,
         metadata={
             "section_name": md.get("section_name", ""),
             "sibling_sections": siblings,
             "pages": pages,
+            "section_hierarchy_ids": hierarchy_ids,
             "doc_id": md.get("doc_id", ""),
         },
     )
@@ -202,6 +211,29 @@ class ChromaVectorStore:
                 seen.add(cid)
                 out.append(_metadata_to_chunk(cid, text, md or {}))
         return out
+
+    def fetch_chunks_for_section(self, doc_id: str, leaf_section_id: str) -> List[Chunk]:
+        """Return every stored chunk that belongs to ``leaf_section_id`` in ``doc_id``.
+
+        Used by hierarchical context escalation to pull the full text of an
+        ancestor section (which may itself have been split into several chunks).
+        Results are returned in document (``order``) order.
+        """
+        if not leaf_section_id:
+            return []
+        try:
+            got = self.collection.get(
+                where={"$and": [{"doc_id": doc_id}, {"leaf_section_id": leaf_section_id}]},
+                include=["documents", "metadatas"],
+            )
+        except Exception:
+            return []
+        ids = got.get("ids") or []
+        docs = got.get("documents") or []
+        metas = got.get("metadatas") or []
+        chunks = [_metadata_to_chunk(cid, text, md or {}) for cid, text, md in zip(ids, docs, metas)]
+        chunks.sort(key=lambda c: c.order)
+        return chunks
 
     # ── query-time ────────────────────────────────────────────────────────────
     def embed_query(self, query: str) -> np.ndarray:

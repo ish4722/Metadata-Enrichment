@@ -48,6 +48,7 @@ from rag.indexing.chroma_store import (  # noqa: E402
     get_or_create_store,
 )
 from rag.inference.context_builder import build_context  # noqa: E402
+from rag.inference.hierarchical_answer import answer_with_hierarchical_context  # noqa: E402
 from rag.inference.llm import get_llm  # noqa: E402
 from rag.inference.prompt import make_prompt  # noqa: E402
 from rag.inference.reranker import get_reranker, rerank  # noqa: E402
@@ -81,6 +82,9 @@ class QueryResult:
     retrieval_query: str
     ground_truth: Any = None
     gt_tokens: List[str] = field(default_factory=list)
+    # Retrieved (chunk, score) matches, kept transient for hierarchical escalation
+    # at generation time; not serialized into the summary.
+    matches: List[Tuple[Any, float]] = field(default_factory=list)
     context_items: List[Dict[str, Any]] = field(default_factory=list)
     retrieved_text: str = ""
     retrieval_hit: bool = False
@@ -90,6 +94,10 @@ class QueryResult:
     token_match: Optional[bool] = None
     judge_match: Optional[bool] = None
     llm_hit: Optional[bool] = None
+    # Hierarchical escalation bookkeeping (0 depth / 1 call for other modes).
+    escalation_depth: int = 0
+    llm_calls: int = 0
+    context_tokens_by_level: List[int] = field(default_factory=list)
     retrieval_time_s: float = 0.0
     gen_time_s: float = 0.0
     judge_time_s: float = 0.0
@@ -197,7 +205,15 @@ class BatchRunner:
             with self._rerank_lock:
                 matches = rerank(qr.retrieval_query, matches, self.config.reranker_model,
                                  top_k=self.config.rerank_top_k)
-        items, raw_text = build_context(matches, [c for c, _ in matches], context_mode=self.config.context_mode)
+        qr.matches = matches
+        # Full-page context must see EVERY chunk on the matched pages, not just
+        # the matched chunks; fetch them from the store (like the query pipeline).
+        if self.config.context_mode == "full_page":
+            keys = {(c.source, c.page) for c, _ in matches}
+            corpus = self.store.fetch_chunks_for_pages(keys)
+        else:
+            corpus = [c for c, _ in matches]
+        items, raw_text = build_context(matches, corpus, context_mode=self.config.context_mode)
         qr.context_items = items
         qr.retrieved_text = raw_text
         qr.retrieval_hit = rag_evaluation.answer_is_correct(raw_text, qr.gt_tokens)
@@ -206,15 +222,28 @@ class BatchRunner:
 
     # ── generation phase ──────────────────────────────────────────────────────
     def _generate_one(self, qr: QueryResult) -> QueryResult:
-        if self.llm is None or not qr.context_items:
+        if self.llm is None or not qr.matches:
             return qr
         t0 = time.perf_counter()
-        prompt = make_prompt(qr.question, qr.context_items)
-        answer, usage = rag_evaluation.invoke_llm_with_usage(self.llm, prompt)
-        qr.answer = answer
-        qr.gen_usage = usage
+        if self.config.context_mode == "hierarchical":
+            result = answer_with_hierarchical_context(
+                self.llm, qr.question, qr.matches, self.store, qr.doc_id, self.config,
+                rag_evaluation.invoke_llm_with_usage,
+            )
+            qr.answer = result.answer
+            qr.gen_usage = result.usage or qr.gen_usage
+            qr.context_items = result.context_items
+            qr.escalation_depth = result.escalation_depth
+            qr.llm_calls = result.llm_calls
+            qr.context_tokens_by_level = result.context_tokens_by_level
+        else:
+            prompt = make_prompt(qr.question, qr.context_items)
+            answer, usage = rag_evaluation.invoke_llm_with_usage(self.llm, prompt)
+            qr.answer = answer
+            qr.gen_usage = usage
+            qr.llm_calls = 1
         qr.gen_time_s = time.perf_counter() - t0
-        qr.token_match = rag_evaluation.llm_answer_is_correct(answer, qr.gt_tokens)
+        qr.token_match = rag_evaluation.llm_answer_is_correct(qr.answer, qr.gt_tokens)
         return qr
 
     # ── judge phase ───────────────────────────────────────────────────────────
@@ -306,6 +335,9 @@ def _qr_to_row(qr: QueryResult) -> Dict[str, Any]:
         "tokens": qr.gen_usage.get("total_tokens", 0),
         "judge_input_tokens": qr.judge_usage.get("input_tokens", 0),
         "judge_output_tokens": qr.judge_usage.get("output_tokens", 0),
+        "escalation_depth": qr.escalation_depth,
+        "llm_calls": qr.llm_calls,
+        "context_tokens_by_level": qr.context_tokens_by_level,
         "retrieval_time_s": qr.retrieval_time_s,
         "gen_time_s": qr.gen_time_s,
         "judge_time_s": qr.judge_time_s,
@@ -331,6 +363,12 @@ def summarize(
     gen_out = sum(r["output_tokens"] for r in rows)
     judge_in = sum(r["judge_input_tokens"] for r in rows)
     judge_out = sum(r["judge_output_tokens"] for r in rows)
+    total_llm_calls = sum(r.get("llm_calls", 0) for r in rows)
+    escalated = [r for r in rows if r.get("llm_calls", 0) > 0]
+    avg_escalation_depth = (
+        sum(r.get("escalation_depth", 0) for r in escalated) / len(escalated)
+        if escalated else None
+    )
 
     # Costs (USD). Generation + judge use the chat-model pricing; embedding uses
     # the embedding-model pricing accumulated during the build phase.
@@ -351,6 +389,11 @@ def summarize(
         "llm_correct": llm_correct,
         "token_correct": token_correct,
         "retrieval_correct": retr_correct,
+        "escalation": {
+            "total_llm_calls": total_llm_calls,
+            "avg_llm_calls_per_query": (total_llm_calls / total) if total else None,
+            "avg_escalation_depth": avg_escalation_depth,
+        },
         "tokens": {
             "embed_input": embed_tokens,
             "gen_input": gen_in, "gen_output": gen_out,
@@ -388,6 +431,22 @@ def print_summary(summary: Dict[str, Any]) -> None:
             ["Retrieval hit", f"{summary['retrieval_correct']} / {summary['total_questions']}", acc(summary["combined_retrieval_accuracy"])],
         ],
     ))
+    esc = summary.get("escalation", {})
+    if esc.get("total_llm_calls"):
+        def _num(v: Optional[float]) -> str:
+            return f"{v:.2f}" if v is not None else "N/A"
+        print("\n" + "=" * 70)
+        print("HIERARCHICAL ESCALATION")
+        print("=" * 70)
+        print(rag_evaluation._render_ascii_table(
+            ["Metric", "Value"],
+            [
+                ["Total LLM calls", str(esc.get("total_llm_calls", 0))],
+                ["Avg LLM calls / query", _num(esc.get("avg_llm_calls_per_query"))],
+                ["Avg escalation depth", _num(esc.get("avg_escalation_depth"))],
+            ],
+        ))
+
     t = summary["tokens"]
     print("\n" + "=" * 70)
     print("TOKEN USAGE (input vs output)")
@@ -453,6 +512,14 @@ def parse_args() -> argparse.Namespace:
                    help="Override config.retrieval_mode")
     p.add_argument("--hybrid-alpha", type=float, default=None,
                    help="Override config.hybrid_alpha (0=BM25 .. 1=dense)")
+    p.add_argument("--context-mode", choices=["chunk", "full_page", "hierarchical"], default=None,
+                   help="Override config.context_mode")
+    p.add_argument("--hierarchical-max-depth", type=int, default=None,
+                   help="Max ancestor levels to climb in hierarchical mode")
+    p.add_argument("--load-max-workers", type=int, default=None,
+                   help="Process-pool workers for load+chunk (use 1 on Windows / large JSONs to avoid MemoryError)")
+    p.add_argument("--embed-max-workers", type=int, default=None,
+                   help="Concurrent embedding requests during build")
     p.add_argument("--inject-name", action=argparse.BooleanOptionalAction, default=True,
                    help="Fill {well} placeholders with the ground-truth name (--no-inject-name to disable)")
     return p.parse_args()
@@ -471,6 +538,14 @@ def main() -> None:
         config.retrieval_mode = args.retrieval_mode
     if args.hybrid_alpha is not None:
         config.hybrid_alpha = args.hybrid_alpha
+    if args.context_mode:
+        config.context_mode = args.context_mode
+    if args.hierarchical_max_depth is not None:
+        config.hierarchical_max_depth = args.hierarchical_max_depth
+    if args.load_max_workers is not None:
+        config.load_max_workers = args.load_max_workers
+    if args.embed_max_workers is not None:
+        config.embed_max_workers = args.embed_max_workers
 
     matched, skipped = evaluate_all.discover_docs(args.docs_dir, args.matched_dir, only=args.only)
     print(f"Discovered {len(matched)} doc(s)" + (f", skipped {len(skipped)}" if skipped else ""))
@@ -506,6 +581,7 @@ def main() -> None:
         "reranker_model": config.reranker_model,
         "chunk_strategy": config.chunk_strategy,
         "context_mode": config.context_mode,
+        "hierarchical_max_depth": config.hierarchical_max_depth,
         "top_k": config.top_k,
         "rerank_top_k": config.rerank_top_k,
         "inject_name": args.inject_name,

@@ -25,6 +25,7 @@ from rag.indexing.build_pipeline import chunks_from_json, make_backend
 from rag.indexing.chroma_store import ChromaVectorStore, embed_corpus, get_or_create_store
 from rag.indexing.embeddings import EmbeddingBackend
 from rag.inference.context_builder import build_context
+from rag.inference.hierarchical_answer import answer_with_hierarchical_context
 from rag.inference.llm import answer_with_llm, get_llm
 from rag.inference.prompt import make_prompt
 from rag.inference.reranker import get_reranker, rerank
@@ -241,16 +242,32 @@ class RagEngine:
             # 5. LLM answer
             answer = ""
             llm = self.get_llm(cfg)
-            if llm is not None and context_items:
+            if llm is not None and matches:
                 yield {"stage": "llm", "status": "start", "model": cfg.llm_model}
-                answer, usage = rag_evaluation.invoke_llm_with_usage(
-                    llm, make_prompt(question, context_items)
-                )
-                gen_cost = rag_evaluation.token_cost_usd(
-                    usage.get("input_tokens", 0), usage.get("output_tokens", 0)
-                )
-                yield {"stage": "llm", "status": "done", "answer": answer,
-                       "usage": usage, "cost_usd": gen_cost}
+                if cfg.context_mode == "hierarchical":
+                    result = answer_with_hierarchical_context(
+                        llm, question, matches, store, doc_id, cfg,
+                        rag_evaluation.invoke_llm_with_usage,
+                    )
+                    answer = result.answer
+                    usage = result.usage
+                    context_items = result.context_items
+                    gen_cost = rag_evaluation.token_cost_usd(
+                        usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+                    )
+                    yield {"stage": "llm", "status": "done", "answer": answer,
+                           "usage": usage, "cost_usd": gen_cost,
+                           "escalation_depth": result.escalation_depth,
+                           "llm_calls": result.llm_calls}
+                else:
+                    answer, usage = rag_evaluation.invoke_llm_with_usage(
+                        llm, make_prompt(question, context_items)
+                    )
+                    gen_cost = rag_evaluation.token_cost_usd(
+                        usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+                    )
+                    yield {"stage": "llm", "status": "done", "answer": answer,
+                           "usage": usage, "cost_usd": gen_cost}
             else:
                 yield {"stage": "llm", "status": "skipped",
                        "message": "LLM unavailable - showing retrieved context only."}

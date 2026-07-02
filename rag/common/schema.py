@@ -8,7 +8,7 @@ one place means every module agrees on the same shape.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -28,3 +28,7 @@ class Chunk:
     leaf_section_id: str = ""
     parent_section_id: str = ""
     order: int = 0
+    # Full ancestor chain of SectionHeader ids, shallow -> deep, ending in
+    # ``leaf_section_id``. Used by hierarchical context escalation to walk up
+    # parent sections when the matched chunk lacks enough context.
+    section_hierarchy_ids: List[str] = field(default_factory=list)

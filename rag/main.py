@@ -50,7 +50,8 @@ def add_config_args(parser: argparse.ArgumentParser) -> None:
     g.set_defaults(use_reranker=None)
     g.add_argument("--reranker-model")
     g.add_argument("--rerank-top-k", type=int)
-    g.add_argument("--context-mode", choices=["chunk", "full_page"])
+    g.add_argument("--context-mode", choices=["chunk", "full_page", "hierarchical"])
+    g.add_argument("--hierarchical-max-depth", type=int)
     g.add_argument("--save-pages", action="store_true", help="Save the context sent to the LLM")
     g.add_argument("--model-path", help="Local model folder for dense embeddings (e.g. ./jina-v3)")
     g.add_argument("--llm-model")
@@ -72,6 +73,7 @@ def build_config(args: argparse.Namespace) -> RagConfig:
         "reranker_model": args.reranker_model,
         "rerank_top_k": args.rerank_top_k,
         "context_mode": args.context_mode,
+        "hierarchical_max_depth": args.hierarchical_max_depth,
         "model_path": args.model_path,
         "llm_model": args.llm_model,
     }
