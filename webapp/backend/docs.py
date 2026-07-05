@@ -27,7 +27,8 @@ DATALAB_DIR = os.path.join(REPO_ROOT, "datalab-output")
 MATCHED_DIR = os.path.join(REPO_ROOT, "matched_json")
 
 # Embedding models exposed in the UI (friendly aliases from the config).
-EMBEDDING_MODELS = ["openai", "jina", "minilm", "tfidf"]
+# "jina-api" = the remotely hosted jina-embeddings-v3 server (late chunking on).
+EMBEDDING_MODELS = ["jina-api", "openai", "jina", "minilm", "tfidf"]
 
 
 def _scan_ids(directory: str, ext: str) -> Dict[str, str]:

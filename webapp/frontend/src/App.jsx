@@ -25,7 +25,7 @@ export default function App() {
   const [queries, setQueries] = useState([]);
 
   const [selectedDocId, setSelectedDocId] = useState("");
-  const [embeddingModel, setEmbeddingModel] = useState("openai");
+  const [embeddingModel, setEmbeddingModel] = useState("jina-api");
 
   const [building, setBuilding] = useState(false);
   const [buildEvents, setBuildEvents] = useState([]);

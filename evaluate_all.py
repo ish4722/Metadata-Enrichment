@@ -13,9 +13,10 @@ The ground-truth file is matched automatically by the doc's PR id (the datalab
 filename ``datalab-output-PR2610.pdf.json`` maps to ``matched_json/PR2610.json``).
 
 Afterwards every doc's per-query results are pooled into a single combined
-accuracy: with N docs and 4 queries that is ``correct / (N * 4)`` questions
-(e.g. 50 docs -> 200 questions). Per-label and per-doc breakdowns are printed
-too, and the whole summary is saved to ``output_table/batch_summary.json``.
+accuracy: with N docs and Q queries that is ``correct / (N * Q)`` questions
+(Q is however many blocks ``queries.txt`` defines). Per-label and per-doc
+breakdowns are printed too, and the whole summary is saved to
+``output_table/batch_summary.json``.
 
 Run from the repo root:
 

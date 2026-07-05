@@ -31,7 +31,13 @@ export default function BuildPanel({
         {embeddingModel === "tfidf" && (
           <div className="hint warn">
             TF-IDF builds per-doc vocabularies and is not ideal for the shared
-            embed-once store. Prefer openai / jina / minilm.
+            embed-once store. Prefer jina-api / openai / jina / minilm.
+          </div>
+        )}
+        {embeddingModel === "jina-api" && (
+          <div className="hint subtle">
+            Hosted jina-embeddings-v3 (late chunking on): passages are embedded
+            with whole-window context. Free — no OpenAI cost.
           </div>
         )}
       </div>

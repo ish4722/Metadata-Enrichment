@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import sys
 import time
@@ -42,6 +41,7 @@ apply_ssl_patches()
 
 import rag_evaluation  # noqa: E402
 from rag.config import RagConfig  # noqa: E402
+from rag.evaluation.retrieval_metrics import inject_query, metrics_for  # noqa: E402
 from rag.indexing.build_pipeline import make_backend  # noqa: E402
 from rag.indexing.chroma_store import _minmax_normalize, get_or_create_store  # noqa: E402
 from rag.inference.reranker import get_reranker  # noqa: E402
@@ -105,49 +105,6 @@ class _TransformersReranker:
 def config_name(mode, alpha, inject):
     base = "dense" if mode == "dense" else f"hyb{alpha}"
     return f"{base}_{'inj' if inject else 'noinj'}"
-
-
-def inject_query(question, label, well_name):
-    """Substitute the well name into the question (non-facility labels only)."""
-    if label == "facility name" or not well_name or well_name == "the well":
-        return question
-    out = question
-    for needle in ("this well", "the well"):
-        if needle in out:
-            return out.replace(needle, well_name)
-    return out + f" for {well_name}"
-
-
-def metrics_for(ranked_ids, rel_set, wrong_set):
-    """All metrics for one ranked list against one relevant/wrong set."""
-    rel_total = len(rel_set)
-    rr = 0.0
-    for i, cid in enumerate(ranked_ids, 1):
-        if cid in rel_set:
-            rr = 1.0 / i
-            break
-    seen = 0
-    ap_sum = 0.0
-    for i, cid in enumerate(ranked_ids, 1):
-        if cid in rel_set:
-            seen += 1
-            ap_sum += seen / i
-    ap = ap_sum / rel_total if rel_total else 0.0
-
-    def idcg(k):
-        return sum(1.0 / math.log2(i + 1) for i in range(1, min(k, rel_total) + 1))
-
-    out = {"mrr": rr, "map": ap}
-    for k in KS:
-        topk = ranked_ids[:k]
-        inter = sum(1 for c in topk if c in rel_set)
-        dcg = sum(1.0 / math.log2(i + 1) for i, c in enumerate(topk, 1) if c in rel_set)
-        idc = idcg(k)
-        out[f"hit@{k}"] = 1.0 if inter else 0.0
-        out[f"recall@{k}"] = inter / rel_total if rel_total else 0.0
-        out[f"ndcg@{k}"] = (dcg / idc) if idc > 0 else 0.0
-        out[f"distractor@{k}"] = sum(1 for c in topk if c in wrong_set) / k
-    return out
 
 
 def rank_orders(dense, bm):

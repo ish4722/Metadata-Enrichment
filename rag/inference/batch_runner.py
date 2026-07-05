@@ -28,6 +28,7 @@ import os
 import sys
 import threading
 import time
+from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -344,6 +345,18 @@ def _qr_to_row(qr: QueryResult) -> Dict[str, Any]:
     }
 
 
+def _has_ground_truth(row: Dict[str, Any]) -> bool:
+    """A row is scorable only when it has a non-empty ground-truth value."""
+    gt = row.get("ground_truth")
+    if gt is None:
+        return False
+    if isinstance(gt, str) and not gt.strip():
+        return False
+    if isinstance(gt, (list, tuple, dict)) and len(gt) == 0:
+        return False
+    return True
+
+
 def summarize(
     results: List[QueryResult],
     embed_tokens: int = 0,
@@ -355,9 +368,43 @@ def summarize(
     def _is_hit(v: Any) -> bool:
         return v is True
 
+    def _acc(correct: int, denom: int) -> Optional[float]:
+        return (correct / denom) if denom else None
+
+    # Accuracy denominators exclude rows with no ground truth: a question we
+    # cannot grade (null ground truth) must not count against accuracy.
+    scorable = sum(1 for r in rows if _has_ground_truth(r))
+    null_ground_truth = total - scorable
+
     llm_correct = sum(1 for r in rows if _is_hit(r["llm_hit"]))
     token_correct = sum(1 for r in rows if _is_hit(r["token_match"]))
     retr_correct = sum(1 for r in rows if _is_hit(r["retrieval_hit"]))
+
+    # Per-attribute (query label) breakdown, in first-seen order. Accuracy for
+    # each label is measured over that label's scorable (non-null GT) rows only.
+    by_label: "OrderedDict[str, Dict[str, int]]" = OrderedDict()
+    for r in rows:
+        b = by_label.setdefault(r["label"], {"total": 0, "scorable": 0, "llm": 0, "token": 0, "retrieval": 0})
+        b["total"] += 1
+        b["scorable"] += 1 if _has_ground_truth(r) else 0
+        b["llm"] += 1 if _is_hit(r["llm_hit"]) else 0
+        b["token"] += 1 if _is_hit(r["token_match"]) else 0
+        b["retrieval"] += 1 if _is_hit(r["retrieval_hit"]) else 0
+    per_label = [
+        {
+            "label": label,
+            "total": b["total"],
+            "null_ground_truth": b["total"] - b["scorable"],
+            "scorable": b["scorable"],
+            "llm_correct": b["llm"],
+            "token_correct": b["token"],
+            "retrieval_correct": b["retrieval"],
+            "llm_accuracy": _acc(b["llm"], b["scorable"]),
+            "token_accuracy": _acc(b["token"], b["scorable"]),
+            "retrieval_accuracy": _acc(b["retrieval"], b["scorable"]),
+        }
+        for label, b in by_label.items()
+    ]
 
     gen_in = sum(r["input_tokens"] for r in rows)
     gen_out = sum(r["output_tokens"] for r in rows)
@@ -383,12 +430,15 @@ def summarize(
 
     return {
         "total_questions": total,
-        "combined_llm_accuracy": (llm_correct / total) if total else None,
-        "combined_token_accuracy": (token_correct / total) if total else None,
-        "combined_retrieval_accuracy": (retr_correct / total) if total else None,
+        "scorable_questions": scorable,
+        "null_ground_truth": null_ground_truth,
+        "combined_llm_accuracy": _acc(llm_correct, scorable),
+        "combined_token_accuracy": _acc(token_correct, scorable),
+        "combined_retrieval_accuracy": _acc(retr_correct, scorable),
         "llm_correct": llm_correct,
         "token_correct": token_correct,
         "retrieval_correct": retr_correct,
+        "per_label": per_label,
         "escalation": {
             "total_llm_calls": total_llm_calls,
             "avg_llm_calls_per_query": (total_llm_calls / total) if total else None,
@@ -420,17 +470,40 @@ def print_summary(summary: Dict[str, Any]) -> None:
     def acc(v: Optional[float]) -> str:
         return f"{v * 100:.1f}%" if v is not None else "N/A"
 
+    # Accuracy is measured over scorable questions (null ground truth excluded).
+    denom = summary.get("scorable_questions", summary["total_questions"])
     print("\n" + "=" * 70)
-    print("COMBINED ACCURACY")
+    print("COMBINED ACCURACY (null ground truth excluded)")
     print("=" * 70)
     print(rag_evaluation._render_ascii_table(
-        ["Metric", "Correct / Total", "Accuracy"],
+        ["Metric", "Correct / Scorable", "Accuracy"],
         [
-            ["LLM (judge)", f"{summary['llm_correct']} / {summary['total_questions']}", acc(summary["combined_llm_accuracy"])],
-            ["Literal token", f"{summary['token_correct']} / {summary['total_questions']}", acc(summary["combined_token_accuracy"])],
-            ["Retrieval hit", f"{summary['retrieval_correct']} / {summary['total_questions']}", acc(summary["combined_retrieval_accuracy"])],
+            ["LLM (judge)", f"{summary['llm_correct']} / {denom}", acc(summary["combined_llm_accuracy"])],
+            ["Literal token", f"{summary['token_correct']} / {denom}", acc(summary["combined_token_accuracy"])],
+            ["Retrieval hit", f"{summary['retrieval_correct']} / {denom}", acc(summary["combined_retrieval_accuracy"])],
         ],
     ))
+    if summary.get("null_ground_truth"):
+        print(f"({summary['null_ground_truth']} of {summary['total_questions']} questions had "
+              f"null ground truth and were excluded from accuracy.)")
+    per_label = summary.get("per_label", [])
+    if per_label:
+        print("\n" + "=" * 70)
+        print("ACCURACY BY ATTRIBUTE (null ground truth excluded)")
+        print("=" * 70)
+        print(rag_evaluation._render_ascii_table(
+            ["Attribute", "LLM (judge)", "Token", "Retrieval"],
+            [
+                [
+                    lab["label"],
+                    f"{lab['llm_correct']}/{lab.get('scorable', lab['total'])} ({acc(lab['llm_accuracy'])})",
+                    acc(lab["token_accuracy"]),
+                    acc(lab["retrieval_accuracy"]),
+                ]
+                for lab in per_label
+            ],
+        ))
+
     esc = summary.get("escalation", {})
     if esc.get("total_llm_calls"):
         def _num(v: Optional[float]) -> str:

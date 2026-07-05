@@ -29,11 +29,16 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 JINA_MODEL_ID = "jinaai/jina-embeddings-v3"
 MINILM_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
 
+# Sentinel selecting the remotely hosted Jina v3 embedding server (Cloud Run)
+# instead of loading local weights. See ``RagConfig.jina_api_url``.
+JINA_API_ID = "jina-api"
+
 # Folder names to probe when auto-detecting a local Jina v3 snapshot.
 JINA_LOCAL_DIRS = ("jina-v3",)
 
 EMBEDDING_ALIASES = {
     "jina": JINA_MODEL_ID,
+    "jina-api": JINA_API_ID,
     "minilm": MINILM_MODEL_ID,
     "tfidf": "tfidf",
     "openai": "openai",
@@ -57,13 +62,24 @@ class RagConfig:
     chunk_strategy: str = "section"
 
     # ── embedding (folder 1)  ← SWAP EMBEDDING MODEL HERE ───────────────────
-    # "jina" | "minilm" | "openai" | "tfidf" | any HuggingFace model id
+    # "jina-api" | "jina" | "minilm" | "openai" | "tfidf" | any HuggingFace id
     embedding_model: str = "openai"
     # OpenAI-compatible embeddings (SLB internal deployment). base_url defaults
     # to llm_base_url when left as None.
     openai_embedding_model: str = "text-embedding-3-large"
     openai_embedding_base_url: Optional[str] = "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1"
     openai_embedding_partition_id: Optional[str] = "sandbox-weu-des-prod-testing-e"
+
+    # ── hosted Jina v3 embedding server (embedding_model="jina-api") ─────────
+    # A remote jina-embeddings-v3 deployment (Cloud Run) exposing POST /embed.
+    # Passages are embedded with LATE CHUNKING on: the server encodes each
+    # window in one pass and mean-pools per chunk, so every chunk vector carries
+    # whole-window context. Queries are embedded normally (late chunking off).
+    jina_api_url: str = "https://jina-v3-j5rhb37u6q-uc.a.run.app"
+    jina_api_late_chunking: bool = True
+    # Token budget per late-chunking forward pass on the server (its default is
+    # 3072). Chunks are grouped into windows of roughly this many tokens.
+    jina_api_window_tokens: int = 3072
 
     # ── vector store  ← SWAP DB HERE ────────────────────────────────────────
     # "chroma" - persistent ChromaDB collection that stores our PRECOMPUTED
@@ -127,6 +143,11 @@ class RagConfig:
         return self.resolved_embedding_model == "tfidf"
 
     @property
+    def use_jina_api(self) -> bool:
+        """True when embeddings are served by the remote Jina v3 API."""
+        return self.resolved_embedding_model == JINA_API_ID
+
+    @property
     def resolved_model_path(self) -> Optional[str]:
         """Explicit ``model_path``, or an auto-detected local Jina v3 folder.
 
@@ -137,6 +158,9 @@ class RagConfig:
         """
         if self.model_path:
             return self.model_path
+        # The hosted API needs no local weights; never auto-detect ./jina-v3.
+        if self.use_jina_api:
+            return None
         is_jina = "jina" in self.embedding_model.lower() or "jina" in self.resolved_embedding_model.lower()
         if is_jina:
             for name in JINA_LOCAL_DIRS:
@@ -157,6 +181,10 @@ class RagConfig:
         """
         if self.use_tfidf:
             raw = "tfidf"
+        elif self.use_jina_api:
+            # Keep late-chunked vectors in their own store: they are NOT
+            # interchangeable with independently-encoded chunk vectors.
+            raw = "jina_api_latechunk" if self.jina_api_late_chunking else "jina_api"
         elif self.embedding_model.lower() == "openai":
             raw = f"openai_{self.openai_embedding_model}"
         elif self.resolved_model_path:
@@ -205,6 +233,7 @@ class RagConfig:
         cfg.llm_model = os.getenv("LLM_MODEL", cfg.llm_model)
         cfg.llm_base_url = os.getenv("LLM_BASE_URL", cfg.llm_base_url)
         cfg.partition_id = os.getenv("SLB_PARTITION_ID", cfg.partition_id)
+        cfg.jina_api_url = os.getenv("JINA_API_URL", cfg.jina_api_url)
         return cfg
 
 

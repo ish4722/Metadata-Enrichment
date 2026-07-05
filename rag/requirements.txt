@@ -17,6 +17,10 @@ sentence-transformers
 # Offline Jina v3 via the bundled ONNX weights (no flash custom code needed)
 onnxruntime
 
+# Hosted Jina v3 embedding server (embedding_model="jina-api"); falls back to
+# the stdlib urllib client if requests is not installed.
+requests
+
 # LLM (internal SLB stack)
 langchain-openai
 

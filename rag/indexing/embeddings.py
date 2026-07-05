@@ -8,6 +8,12 @@ matrices that the FAISS store consumes.
 
 Backend selection is driven by :class:`rag.config.RagConfig`:
   * ``embedding_model="tfidf"`` -> scikit-learn TF-IDF (no network).
+  * ``embedding_model="jina-api"`` -> a remotely hosted jina-embeddings-v3
+        server (Cloud Run) reached over HTTP. Passages are embedded with LATE
+        CHUNKING enabled (the server encodes each window in one pass and pools
+        per chunk, so every chunk vector carries whole-window context); queries
+        are embedded normally. This is the recommended dense backend - it needs
+        no local weights, GPU, or the flash custom code.
   * any HF id (e.g. Jina v3 / MiniLM) -> a fallback chain:
         1. transformers AutoModel   (best - supports late chunking for Jina;
                                      needs the flash custom code, i.e. network)
@@ -28,6 +34,12 @@ import os
 from typing import List, Optional
 
 import numpy as np
+
+try:
+    import requests  # preferred HTTP client for the hosted Jina API
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
 
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -246,6 +258,126 @@ def _try_load_jina_onnx(model_id: str):
         return None
 
 
+class _JinaApiModel:
+    """Client for a remotely hosted jina-embeddings-v3 server (``POST /embed``).
+
+    The server owns the weights, GPU and (for late chunking) the sliding-window
+    logic: given a list of ``texts`` it returns one L2-normalised vector per
+    text. When ``late_chunking`` is on the server encodes each ~``window_tokens``
+    window in a single pass and mean-pools per chunk, so each chunk vector
+    carries whole-window context - exactly the late-chunking recipe, but without
+    needing the flash custom code or a local model locally.
+    """
+
+    # Texts sent per HTTP request. Kept generous so a whole document usually
+    # goes in one call (preserving the server's cross-chunk windows); very large
+    # documents are split across requests, which only loses context at the seam.
+    _HTTP_BATCH = 512
+    _RETRIES = 4
+    _TIMEOUT = 180
+
+    def __init__(
+        self,
+        base_url: str,
+        late_chunking: bool = True,
+        window_tokens: int = 3072,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.embed_url = f"{self.base_url}/embed"
+        self.late_chunking = bool(late_chunking)
+        self.window_tokens = int(window_tokens)
+        self._dim: Optional[int] = None
+
+    def _post(self, payload: dict) -> dict:
+        """POST a JSON payload, retrying on cold-start / transient failures."""
+        import time
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self._RETRIES):
+            try:
+                if HAS_REQUESTS:
+                    resp = requests.post(self.embed_url, json=payload, timeout=self._TIMEOUT)
+                    if resp.status_code >= 500:
+                        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+                    resp.raise_for_status()
+                    return resp.json()
+                # stdlib fallback so the backend works without `requests`.
+                import urllib.request
+
+                data = json.dumps(payload).encode("utf-8")
+                req = urllib.request.Request(
+                    self.embed_url, data=data,
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=self._TIMEOUT) as fh:
+                    return json.loads(fh.read().decode("utf-8"))
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt < self._RETRIES - 1:
+                    wait = 2 ** attempt
+                    print(f"  [jina-api] request failed ({exc}); retry in {wait}s ...")
+                    time.sleep(wait)
+        raise RuntimeError(f"Jina API request to {self.embed_url} failed: {last_exc}")
+
+    def encode(
+        self,
+        texts: List[str],
+        task: str = "retrieval.passage",
+        late_chunking: Optional[bool] = None,
+    ) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, self._dim or 1024), dtype=np.float32)
+        # Late chunking only makes sense for multi-chunk passages, never for a
+        # standalone query, so callers pass late_chunking=False for queries.
+        use_late = self.late_chunking if late_chunking is None else bool(late_chunking)
+
+        vecs: List[np.ndarray] = []
+        for start in range(0, len(texts), self._HTTP_BATCH):
+            batch = [str(t) for t in texts[start : start + self._HTTP_BATCH]]
+            payload = {
+                "texts": batch,
+                "task": task,
+                "late_chunking": use_late,
+                "window_tokens": self.window_tokens,
+            }
+            body = self._post(payload)
+            embeddings = body.get("embeddings")
+            if not isinstance(embeddings, list) or len(embeddings) != len(batch):
+                raise RuntimeError(
+                    "Jina API returned an unexpected response "
+                    f"(got {len(embeddings) if isinstance(embeddings, list) else 'no'} "
+                    f"embeddings for {len(batch)} texts)."
+                )
+            arr = np.asarray(embeddings, dtype=np.float32)
+            self._dim = arr.shape[1]
+            vecs.append(arr)
+        return np.concatenate(vecs, axis=0).astype(np.float32)
+
+
+def _try_load_jina_api(base_url: str, late_chunking: bool, window_tokens: int):
+    """Probe the hosted Jina server's /health and return a client (or None)."""
+    if not base_url:
+        return None
+    try:
+        print(f"  [strategy jina-api] connecting to '{base_url}' (late_chunking={late_chunking}) ...")
+        model = _JinaApiModel(base_url, late_chunking=late_chunking, window_tokens=window_tokens)
+        # Health probe wakes a scaled-to-zero Cloud Run instance and confirms
+        # the endpoint is a real Jina v3 server before we commit to it.
+        health_url = f"{model.base_url}/health"
+        if HAS_REQUESTS:
+            info = requests.get(health_url, timeout=_JinaApiModel._TIMEOUT).json()
+        else:
+            import urllib.request
+
+            with urllib.request.urlopen(health_url, timeout=_JinaApiModel._TIMEOUT) as fh:
+                info = json.loads(fh.read().decode("utf-8"))
+        print(f"  [ok] hosted Jina reachable: {info}")
+        return model
+    except Exception as e:  # noqa: BLE001
+        print(f"  [x] hosted Jina API unavailable: {e}")
+        return None
+
+
 def _try_load_sentence_transformer(model_id: str):
     if not HAS_SENTENCE_TRANSFORMERS:
         return None
@@ -262,6 +394,7 @@ def _try_load_sentence_transformer(model_id: str):
 class EmbeddingBackend:
     _MODE_AUTOMODEL = "jina-automodel"
     _MODE_ONNX = "jina-onnx"
+    _MODE_JINA_API = "jina-api"
     _MODE_PIPELINE = "jina-pipeline"
     _MODE_ST = "sentence-transformer"
     _MODE_OPENAI = "openai"
@@ -274,10 +407,14 @@ class EmbeddingBackend:
         openai_model: str = "text-embedding-3-small",
         openai_base_url: Optional[str] = None,
         openai_partition_id: Optional[str] = None,
+        jina_api_url: Optional[str] = None,
+        jina_api_late_chunking: bool = True,
+        jina_api_window_tokens: int = 3072,
     ) -> None:
         self._mode: Optional[str] = None
         self._automodel = None
         self._onnx_model = None
+        self._jina_api = None
         self._hf_pipeline = None
         self._st_model = None
         self._tfidf = None
@@ -290,12 +427,29 @@ class EmbeddingBackend:
         self._openai_model = openai_model
         self._openai_base_url = openai_base_url
         self._openai_partition_id = openai_partition_id
+        self._jina_api_url = jina_api_url
+        self._jina_api_late_chunking = bool(jina_api_late_chunking)
+        self._jina_api_window_tokens = int(jina_api_window_tokens)
         self._loaded_model_id: Optional[str] = None
 
         print(f"Initialising EmbeddingBackend (preferred: {preferred_model}) ...")
 
         if preferred_model == "tfidf":
             self._init_tfidf()
+            return
+
+        # Remotely hosted Jina v3 server (late chunking done server-side).
+        if preferred_model == "jina-api":
+            self._jina_api = _try_load_jina_api(
+                jina_api_url, jina_api_late_chunking, jina_api_window_tokens
+            )
+            if self._jina_api is not None:
+                self._mode = self._MODE_JINA_API
+                self._loaded_model_id = preferred_model
+            else:
+                print("  [fallback] hosted Jina API unavailable - using TF-IDF")
+                self._init_tfidf()
+            print(f"EmbeddingBackend ready - using [{self._mode}]")
             return
 
         if preferred_model == "openai":
@@ -408,6 +562,7 @@ class EmbeddingBackend:
         "_openai",
         "_automodel",
         "_onnx_model",
+        "_jina_api",
         "_hf_pipeline",
         "_st_model",
     )
@@ -454,6 +609,17 @@ class EmbeddingBackend:
                     "Jina ONNX model could not be reconstructed after loading the "
                     "cached index. Ensure onnxruntime is installed and the local "
                     "jina-v3/onnx/model.onnx is present."
+                )
+        elif self._mode == self._MODE_JINA_API and self._jina_api is None:
+            self._jina_api = _try_load_jina_api(
+                self._jina_api_url,
+                self._jina_api_late_chunking,
+                self._jina_api_window_tokens,
+            )
+            if self._jina_api is None:
+                raise RuntimeError(
+                    "Hosted Jina API client could not be reconstructed after "
+                    "loading the cached index. Check JINA_API_URL / network access."
                 )
         elif self._mode == self._MODE_PIPELINE and self._hf_pipeline is None:
             self._hf_pipeline = _try_load_pipeline(
@@ -515,6 +681,11 @@ class EmbeddingBackend:
             return self._encode_automodel(texts, task)
         if self._mode == self._MODE_ONNX:
             return self._onnx_model.encode(texts, task=task)
+        if self._mode == self._MODE_JINA_API:
+            # Late chunking applies to multi-chunk passages only; a lone query
+            # has no cross-chunk context to pool, so disable it for queries.
+            late = self._jina_api_late_chunking and task != "retrieval.query"
+            return self._jina_api.encode(texts, task=task, late_chunking=late)
         if self._mode == self._MODE_PIPELINE:
             return self._encode_pipeline(texts)
         if self._mode == self._MODE_ST:

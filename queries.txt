@@ -1,21 +1,25 @@
 facility name:
 What is the well name?
+
  
-
-
 lat+long:
 What is the geographic location(latitude and longitude) of this well based on its WGS84 coordinates?
+
  
-
-
 openv ID:
 What is the operating environment of this well?(Onshore/Offshore)
-
-
+ 
+ 
 facilityevent spud date:
 What is the spud date/kick off date of the well ?
 
-
  
+country name: 
+What is the country where this well is located?
+
+basin name:
+what is the basin name of this well? which basin is this well found in?
+field name:
+what is the field name of this well? what field is this well found in?
 
 

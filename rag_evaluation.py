@@ -27,6 +27,7 @@ import pickle
 import re
 import time
 import tracemalloc
+import urllib.parse
 from dataclasses import asdict, dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -176,12 +177,33 @@ def _trunc(value: float, decimals: int = 2) -> str:
     return f"{int_part}.{dec_part[:decimals]}"
 
 
+# Dataset-specific tag appended to master-data entity keys in this OSDU export
+# (e.g. "NZ-TARANAKI%20BASINBenchMCIEVD" or "New%20ZealandBenchMCIEVD").
+_DATASET_KEY_SUFFIX = "BenchMCIEVD"
+
+
+def _clean_reference_value(value: Optional[str]) -> Optional[str]:
+    """Normalise an OSDU reference tail into human-readable text.
+
+    URL-decodes percent escapes (``%20`` -> space, ``%2C`` -> comma), strips the
+    dataset-specific ``BenchMCIEVD`` suffix, and collapses whitespace.
+    """
+    if not value or not isinstance(value, str):
+        return value
+    text = urllib.parse.unquote(value)
+    if text.endswith(_DATASET_KEY_SUFFIX):
+        text = text[: -len(_DATASET_KEY_SUFFIX)]
+    text = " ".join(text.split()).strip()
+    return text or None
+
+
 def _strip_reference_id(value: Optional[str]) -> Optional[str]:
     """Turn 'partition:reference-data--OperatingEnvironment:Onshore:' into 'Onshore'."""
     if not value or not isinstance(value, str):
         return value
     parts = [p for p in value.split(":") if p]
-    return parts[-1] if parts else value
+    tail = parts[-1] if parts else value
+    return _clean_reference_value(tail)
 
 
 def gt_facility_name(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -220,12 +242,232 @@ def gt_lat_long(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"value": None, "tokens": []}
 
 
+# ---------------------------------------------------------------------------
+# Ground-truth extractors for the extended validation query set.
+#
+# These read OSDU Well / Wellbore master-data fields (see all_schema_keys.json).
+# Reference-id valued fields (e.g. "partition:reference-data--Basin:X:") are
+# reduced to their trailing token via ``_strip_reference_id``. Value shapes were
+# inferred from the schema key paths; adjust the field names below if a specific
+# corpus stores values differently.
+# ---------------------------------------------------------------------------
+
+
+def _geo_contexts(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    contexts = data.get("GeoContexts")
+    return [c for c in contexts if isinstance(c, dict)] if isinstance(contexts, list) else []
+
+
+def _first_ref_from_contexts(data: Dict[str, Any], key: str) -> Optional[str]:
+    for ctx in _geo_contexts(data):
+        value = _strip_reference_id(ctx.get(key))
+        if value:
+            return value
+    return None
+
+
+def gt_country_name(data: Dict[str, Any]) -> Dict[str, Any]:
+    value = _strip_reference_id(data.get("CountryName"))
+    if not value:
+        names = data.get("AssociatedCountryNames")
+        if isinstance(names, list) and names:
+            value = str(names[0])
+    if not value:
+        value = _first_ref_from_contexts(data, "GeoPoliticalEntityID")
+    return {"value": value, "tokens": [value] if value else []}
+
+
+def gt_current_operator(data: Dict[str, Any]) -> Dict[str, Any]:
+    value = (
+        data.get("CurrentOperator")
+        or _strip_reference_id(data.get("CurrentOperatorID"))
+    )
+    if not value:
+        for op in data.get("FacilityOperators", []) or []:
+            if not isinstance(op, dict):
+                continue
+            value = (
+                _strip_reference_id(op.get("FacilityOperatorID"))
+                or _strip_reference_id(op.get("FacilityOperatorOrganisationID"))
+                or op.get("Remark")
+            )
+            if value:
+                break
+    return {"value": value, "tokens": [value] if value else []}
+
+
+def gt_basin_name(data: Dict[str, Any]) -> Dict[str, Any]:
+    value = _first_ref_from_contexts(data, "BasinID")
+    if value:
+        # Drop a leading country-code prefix such as "NZ-" so the expected value
+        # reads as the plain basin name (e.g. "NZ-TARANAKI BASIN" -> "TARANAKI BASIN").
+        value = re.sub(r"^[A-Z]{2}-", "", value).strip() or value
+    return {"value": value, "tokens": [value] if value else []}
+
+
+def gt_field_name(data: Dict[str, Any]) -> Dict[str, Any]:
+    value = data.get("FieldName")
+    if not value:
+        names = data.get("AssociatedFieldNames")
+        if isinstance(names, list) and names:
+            value = str(names[0])
+    if not value:
+        value = _first_ref_from_contexts(data, "FieldID")
+    return {"value": value, "tokens": [value] if value else []}
+
+
+def gt_marker_names(data: Dict[str, Any]) -> Dict[str, Any]:
+    names: List[str] = []
+    raw = data.get("MarkerNames")
+    if isinstance(raw, list):
+        names = [str(n) for n in raw if n]
+    if not names:
+        for marker in data.get("Markers", []) or []:
+            if not isinstance(marker, dict):
+                continue
+            name = marker.get("MarkerName") or marker.get("FeatureName")
+            if name:
+                names.append(str(name))
+    value = ", ".join(names) if names else None
+    # Tokens are every marker name; ``answer_is_correct`` requires all of them,
+    # but the LLM judge (used for this label) scores partial/semantic matches.
+    return {"value": value, "tokens": names}
+
+
+def gt_default_vertical_measurement(data: Dict[str, Any]) -> Dict[str, Any]:
+    value = _strip_reference_id(data.get("DefaultVerticalMeasurementID"))
+    return {"value": value, "tokens": [value] if value else []}
+
+
+def gt_completion_date(data: Dict[str, Any]) -> Dict[str, Any]:
+    for event in data.get("FacilityEvents", []) or []:
+        if not isinstance(event, dict):
+            continue
+        event_type = (event.get("FacilityEventTypeID") or "").lower()
+        if any(k in event_type for k in ("complet", "abandon", "plug", "suspend")):
+            raw = event.get("EffectiveDateTime") or ""
+            date_only = raw.split("T")[0] if raw else ""
+            return {"value": date_only or raw, "tokens": [date_only] if date_only else []}
+    return {"value": None, "tokens": []}
+
+
+def _vertical_measurements(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    vms = data.get("VerticalMeasurements")
+    if isinstance(vms, list):
+        return [vm for vm in vms if isinstance(vm, dict)]
+    single = data.get("VerticalMeasurement")
+    return [single] if isinstance(single, dict) else []
+
+
+def _vm_field_text(value: Any) -> str:
+    """Plain or reference-id field value as human-readable text."""
+    if value is None:
+        return ""
+    if isinstance(value, str) and ":" in value:
+        return str(_strip_reference_id(value) or value)
+    return str(value)
+
+
+def _vm_search_blob(vm: Dict[str, Any], *keys: str) -> str:
+    """Lowercased, normalized text from selected VerticalMeasurements fields."""
+    parts = [_vm_field_text(vm.get(k)) for k in keys]
+    return re.sub(r"[^a-z0-9]+", " ", " ".join(p for p in parts if p).lower()).strip()
+
+
+def _vm_value(vm: Dict[str, Any]) -> Optional[str]:
+    value = vm.get("VerticalMeasurement")
+    if value is None:
+        return None
+    return str(value)
+
+
+def _is_kb_vertical_measurement(vm: Dict[str, Any]) -> bool:
+    blob = _vm_search_blob(
+        vm,
+        "VerticalReferenceID",
+        "VerticalMeasurementID",
+        "VerticalReferenceEntityID",
+        "VerticalMeasurementDescription",
+        "VerticalMeasurementTypeID",
+    )
+    compact = blob.replace(" ", "")
+    return (
+        "kb" in blob.split()
+        or "kellybushing" in compact
+        or "kelly bushing" in blob
+        or blob.startswith("kelly ")
+    )
+
+
+def _is_total_depth_md_measurement(vm: Dict[str, Any]) -> bool:
+    """Match Total Depth MD rows (type TotalDepth + path MeasuredDepth).
+
+    OSDU stores these as reference ids (``...VerticalMeasurementType:TotalDepth:``),
+  plain labels (``VerticalMeasurementID``: ``Total Depth MD``), or both — see
+    matched_json records such as PR2611.
+    """
+    blob = _vm_search_blob(
+        vm,
+        "VerticalMeasurementTypeID",
+        "VerticalMeasurementPathID",
+        "VerticalMeasurementID",
+        "VerticalMeasurementDescription",
+    )
+    compact = blob.replace(" ", "")
+    if "totaldepthmd" in compact or "total depth md" in blob:
+        return True
+    has_td = "totaldepth" in compact or "total depth" in blob
+    has_md = (
+        "measureddepth" in compact
+        or "measured depth" in blob
+        or blob.endswith(" md")
+        or " md" in f" {blob} "
+    )
+    return has_td and has_md
+
+
+def gt_vertical_measurement_kb(data: Dict[str, Any]) -> Dict[str, Any]:
+    for vm in _vertical_measurements(data):
+        if _is_kb_vertical_measurement(vm):
+            value = _vm_value(vm)
+            if value is not None:
+                return {"value": value, "tokens": [value]}
+    return {"value": None, "tokens": []}
+
+
+def gt_vertical_measurement_total_depth(data: Dict[str, Any]) -> Dict[str, Any]:
+    for vm in _vertical_measurements(data):
+        if _is_total_depth_md_measurement(vm):
+            value = _vm_value(vm)
+            if value is not None:
+                return {"value": value, "tokens": [value]}
+    return {"value": None, "tokens": []}
+
+
 # Maps normalized query labels (lower-cased) to ground-truth extractor functions.
+# The "...2" labels are the "[facility name]" phrasing variants and reuse their
+# base extractor (they target the same attribute).
 GROUND_TRUTH_EXTRACTORS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     "facility name": gt_facility_name,
     "openv id": gt_operating_environment,
     "facilityevent spud date": gt_spud_date,
     "lat+long": gt_lat_long,
+    "country name": gt_country_name,
+    "default vertical measurement id": gt_default_vertical_measurement,
+    "current operator id": gt_current_operator,
+    "current operator id2": gt_current_operator,
+    "basin name": gt_basin_name,
+    "basin name2": gt_basin_name,
+    "field name": gt_field_name,
+    "field name2": gt_field_name,
+    "marker names": gt_marker_names,
+    "marker names2": gt_marker_names,
+    "completion date": gt_completion_date,
+    "completion date2": gt_completion_date,
+    "verticalmeasurementid kb": gt_vertical_measurement_kb,
+    "verticalmeasurementid kb2": gt_vertical_measurement_kb,
+    "vertical measurement total depth": gt_vertical_measurement_total_depth,
+    "vertical measurement total depth2": gt_vertical_measurement_total_depth,
 }
 
 
@@ -241,8 +483,14 @@ def extract_ground_truth(label: str, matched_json: Dict[str, Any]) -> Dict[str, 
 
 # Placeholder tokens (in queries.txt / query text) replaced with the document's
 # ground-truth well/facility name, so a query can target a specific well -
-# e.g. "What is the spud date of {well} ?".
-NAME_PLACEHOLDERS = ("{facility_name}", "{well_name}", "{facility}", "{well}", "{name}")
+# e.g. "What is the spud date of {well} ?" or "... of [facility name]?".
+# Both curly-brace and square-bracket forms are supported so authored queries can
+# use the natural "[facility name]" phrasing seen in the validation query set.
+NAME_PLACEHOLDERS = (
+    "{facility_name}", "{well_name}", "{facility}", "{well}", "{name}",
+    "[facility name]", "[well name]", "[facility_name]", "[well_name]",
+    "[facility]", "[well]", "[name]",
+)
 
 
 def inject_name(text: str, name: str) -> str:
@@ -484,6 +732,27 @@ _DMS_PREFIX_RE = re.compile(
 _DEC_HEMI_RE = re.compile(r"([+-]?\d{1,3}(?:\.\d+)?)\s*°?[\s*_`]*([NSEWnsew])\b")
 # Plain signed decimal with >=3 fractional digits (filters page numbers etc.).
 _PLAIN_DEC_RE = re.compile(r"[+-]?\d{1,3}\.\d{3,}")
+# Explicitly LABELLED decimal degrees, e.g. "Latitude: -42.4451" / "long = 171.275"
+# or "latitude 38.9522 S" (sign carried by a trailing hemisphere letter). These are
+# the authoritative decimal form (matching the ground-truth format), so they take
+# precedence over DMS parsing, which mis-fires on DMS fragments such as seconds
+# ("42.465874 S") or a hemisphere letter that belongs to the next token. The
+# optional trailing hemisphere is captured so "38.9522 S" becomes -38.9522.
+_LAT_LABEL_RE = re.compile(
+    r"\blat(?:itude)?\s*[:=]?\s*([+-]?\d{1,3}\.\d{3,})\s*°?\s*([NSns])?", re.IGNORECASE
+)
+_LON_LABEL_RE = re.compile(
+    r"\blong?(?:itude)?\s*[:=]?\s*([+-]?\d{1,3}\.\d{3,})\s*°?\s*([EWew])?", re.IGNORECASE
+)
+
+
+def _labelled_dd(num: str, hemi: Optional[str], neg: str) -> float:
+    """Signed decimal degrees: a hemisphere letter (if present) wins over the
+    numeric sign; otherwise the number's own sign is used (default positive)."""
+    val = float(num)
+    if hemi:
+        return -abs(val) if hemi.upper() == neg else abs(val)
+    return val
 
 
 def _dms_to_dd(deg: str, minute: str, sec: Optional[str], hemi: str) -> float:
@@ -499,6 +768,19 @@ def parse_coordinates(text: str) -> List[Tuple[float, float]]:
     """
     if not text:
         return []
+
+    # Highest priority: an answer that explicitly labels its decimal degrees
+    # (e.g. "Latitude: -42.4451, Longitude: 171.2753"). This is the same format
+    # as the ground truth and is unambiguous, so prefer it over DMS parsing,
+    # which can mis-read DMS seconds or borrow a neighbouring hemisphere letter.
+    mlat = _LAT_LABEL_RE.search(text)
+    mlon = _LON_LABEL_RE.search(text)
+    if mlat and mlon:
+        lat = _labelled_dd(mlat.group(1), mlat.group(2), "S")
+        lon = _labelled_dd(mlon.group(1), mlon.group(2), "W")
+        if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
+            return [(lat, lon)]
+
     lats: List[float] = []
     lons: List[float] = []
 

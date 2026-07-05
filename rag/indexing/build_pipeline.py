@@ -72,6 +72,9 @@ def make_backend(config: RagConfig) -> EmbeddingBackend:
         openai_model=config.openai_embedding_model,
         openai_base_url=config.openai_embedding_base_url or config.llm_base_url,
         openai_partition_id=config.partition_id,
+        jina_api_url=config.jina_api_url,
+        jina_api_late_chunking=config.jina_api_late_chunking,
+        jina_api_window_tokens=config.jina_api_window_tokens,
     )
 
 

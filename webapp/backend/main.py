@@ -89,7 +89,7 @@ def health() -> Dict[str, Any]:
 
 @app.get("/api/embedding-models")
 def embedding_models() -> Dict[str, Any]:
-    return {"models": docs.EMBEDDING_MODELS, "default": "openai"}
+    return {"models": docs.EMBEDDING_MODELS, "default": "jina-api"}
 
 
 @app.get("/api/documents")
