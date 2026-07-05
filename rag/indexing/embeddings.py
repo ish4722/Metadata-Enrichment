@@ -407,6 +407,7 @@ class EmbeddingBackend:
         openai_model: str = "text-embedding-3-small",
         openai_base_url: Optional[str] = None,
         openai_partition_id: Optional[str] = None,
+        openai_dimensions: Optional[int] = None,
         jina_api_url: Optional[str] = None,
         jina_api_late_chunking: bool = True,
         jina_api_window_tokens: int = 3072,
@@ -427,6 +428,7 @@ class EmbeddingBackend:
         self._openai_model = openai_model
         self._openai_base_url = openai_base_url
         self._openai_partition_id = openai_partition_id
+        self._openai_dimensions = openai_dimensions
         self._jina_api_url = jina_api_url
         self._jina_api_late_chunking = bool(jina_api_late_chunking)
         self._jina_api_window_tokens = int(jina_api_window_tokens)
@@ -453,7 +455,8 @@ class EmbeddingBackend:
             return
 
         if preferred_model == "openai":
-            self._init_openai(openai_model, openai_base_url, openai_partition_id)
+            self._init_openai(openai_model, openai_base_url, openai_partition_id,
+                              openai_dimensions)
             if self._mode is None:
                 print("  [fallback] OpenAI embeddings unavailable - using TF-IDF")
                 self._init_tfidf()
@@ -530,23 +533,37 @@ class EmbeddingBackend:
         self._tfidf = TfidfVectorizer(stop_words="english")
         self._mode = self._MODE_TFIDF
 
-    def _init_openai(self, model: str, base_url: Optional[str], partition_id: Optional[str]) -> None:
-        """Load an OpenAI-compatible embeddings client (SLB internal deployment)."""
+    def _init_openai(
+        self,
+        model: str,
+        base_url: Optional[str],
+        partition_id: Optional[str],
+        dimensions: Optional[int] = None,
+    ) -> None:
+        """Load an OpenAI-compatible embeddings client (SLB internal deployment).
+
+        ``dimensions`` requests a truncated (Matryoshka) output width from the
+        embeddings endpoint; when None the model returns its native full width.
+        """
         try:
             from langchain_openai import OpenAIEmbeddings
             from sauth_token import get_token
 
-            print(f"  [strategy openai] OpenAIEmbeddings('{model}') ...")
+            dim_note = f", dimensions={dimensions}" if dimensions else ""
+            print(f"  [strategy openai] OpenAIEmbeddings('{model}'{dim_note}) ...")
             token = get_token()
             if token.startswith("Bearer "):
                 token = token[len("Bearer "):]
             headers = {"slb-partition-id": partition_id} if partition_id else None
-            self._openai = OpenAIEmbeddings(
+            kwargs = dict(
                 model=model,
                 base_url=base_url,
                 api_key=token,
                 default_headers=headers,
             )
+            if dimensions:
+                kwargs["dimensions"] = int(dimensions)
+            self._openai = OpenAIEmbeddings(**kwargs)
             self._mode = self._MODE_OPENAI
             print("  [ok] OpenAI embeddings ready")
         except Exception as e:
@@ -589,7 +606,8 @@ class EmbeddingBackend:
             return
         if self._mode == self._MODE_OPENAI and self._openai is None:
             self._init_openai(
-                self._openai_model, self._openai_base_url, self._openai_partition_id
+                self._openai_model, self._openai_base_url, self._openai_partition_id,
+                getattr(self, "_openai_dimensions", None),
             )
             if self._openai is None:
                 raise RuntimeError(
@@ -665,7 +683,8 @@ class EmbeddingBackend:
                 raise
             print("[auth] embedding token expired - refreshing and retrying once ...")
             self._init_openai(
-                self._openai_model, self._openai_base_url, self._openai_partition_id
+                self._openai_model, self._openai_base_url, self._openai_partition_id,
+                getattr(self, "_openai_dimensions", None),
             )
             if self._openai is None:
                 raise

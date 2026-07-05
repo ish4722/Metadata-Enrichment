@@ -580,6 +580,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-judge", action="store_true")
     p.add_argument("--build-only", action="store_true", help="Only embed-once into Chroma, skip inference")
     p.add_argument("--embedding-model", default=None)
+    p.add_argument("--openai-embedding-model", default=None,
+                   help="Override config.openai_embedding_model (e.g. text-embedding-3-large)")
+    p.add_argument("--openai-embedding-dimensions", type=int, default=None,
+                   help="Truncated (Matryoshka) output dimension for OpenAI embeddings")
+    p.add_argument("--use-reranker", dest="use_reranker", action="store_true", default=None,
+                   help="Force the cross-encoder reranker ON")
+    p.add_argument("--no-reranker", dest="use_reranker", action="store_false",
+                   help="Force the cross-encoder reranker OFF")
     p.add_argument("--chunk-strategy", default=None)
     p.add_argument("--retrieval-mode", choices=["dense", "hybrid"], default=None,
                    help="Override config.retrieval_mode")
@@ -605,6 +613,12 @@ def main() -> None:
     config = RagConfig.from_env()
     if args.embedding_model:
         config.embedding_model = args.embedding_model
+    if args.openai_embedding_model:
+        config.openai_embedding_model = args.openai_embedding_model
+    if args.openai_embedding_dimensions is not None:
+        config.openai_embedding_dimensions = args.openai_embedding_dimensions
+    if args.use_reranker is not None:
+        config.use_reranker = args.use_reranker
     if args.chunk_strategy:
         config.chunk_strategy = args.chunk_strategy
     if args.retrieval_mode:
@@ -648,6 +662,8 @@ def main() -> None:
 
     run_config = {
         "embedding_model": config.embedding_model,
+        "openai_embedding_model": config.openai_embedding_model,
+        "openai_embedding_dimensions": config.openai_embedding_dimensions,
         "retrieval_mode": config.retrieval_mode,
         "hybrid_alpha": config.hybrid_alpha,
         "use_reranker": config.use_reranker,

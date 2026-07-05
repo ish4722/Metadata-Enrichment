@@ -69,6 +69,11 @@ class RagConfig:
     openai_embedding_model: str = "text-embedding-3-large"
     openai_embedding_base_url: Optional[str] = "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1"
     openai_embedding_partition_id: Optional[str] = "sandbox-weu-des-prod-testing-e"
+    # Truncated (Matryoshka) output dimension for OpenAI embeddings. None = the
+    # model's native full width. When set, it is passed to the embeddings API AND
+    # appended to the vector-store slug (``_d{dim}``) so each dimension keeps its
+    # own collection (never colliding with the full-width vectors).
+    openai_embedding_dimensions: Optional[int] = None
 
     # ── hosted Jina v3 embedding server (embedding_model="jina-api") ─────────
     # A remote jina-embeddings-v3 deployment (Cloud Run) exposing POST /embed.
@@ -187,6 +192,10 @@ class RagConfig:
             raw = "jina_api_latechunk" if self.jina_api_late_chunking else "jina_api"
         elif self.embedding_model.lower() == "openai":
             raw = f"openai_{self.openai_embedding_model}"
+            if self.openai_embedding_dimensions:
+                # Truncated Matryoshka vectors get their own collection so they
+                # never collide with (or silently reuse) the full-width vectors.
+                raw = f"{raw}_d{self.openai_embedding_dimensions}"
         elif self.resolved_model_path:
             raw = os.path.basename(os.path.normpath(self.resolved_model_path))
         else:
