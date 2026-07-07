@@ -22,8 +22,23 @@ from typing import Dict, List, Optional, Sequence
 KS = [1, 3, 5, 10]
 # Ranking depth kept for MRR / MAP (and the reranker candidate pool default).
 TOP_N = 20
-# Labels scored in the study (align with queries.txt / the gold set).
-LABELS = ["facility name", "openv ID", "facilityevent spud date", "lat+long"]
+# Labels scored in the study (align with queries.txt / the gold set). A label is
+# only actually scored when it (a) is defined in queries.txt and (b) has answerable
+# chunks in the gold set, so listing extras here is safe.
+LABELS = [
+    "facility name",
+    "openv ID",
+    "facilityevent spud date",
+    "lat+long",
+    "country name",
+    "basin name",
+    "field name",
+    "default vertical measurement ID",
+    "current operator ID",
+    "marker names",
+    "vertical measurement total depth",
+    "completion date",
+]
 
 
 def inject_query(question: str, label: str, well_name: str) -> str:
@@ -165,12 +180,18 @@ def score_matryoshka_retrieval(
             ginfo = entry.get(label, {})
             if ginfo.get("status") != "answerable":
                 continue
+            # Only score labels that the current queries file actually defines;
+            # the gold set may cover more labels than queries.txt (which can be
+            # trimmed to a subset for a focused benchmark).
+            question_text = questions.get(label)
+            if question_text is None:
+                continue
             rel_set = set(ginfo.get("correct_chunk_ids", []))
             wrong_set = {r["chunk_id"] for r in ginfo.get("relevant", []) if r.get("grade") == 1}
             if not rel_set:
                 continue
 
-            q = inject_query(questions[label], label, well_name)
+            q = inject_query(question_text, label, well_name)
             dense = store._dense_scores_full(q, ids, doc_id)
             bm = (
                 np.array(bm25.get_scores(q.lower().split()), dtype=np.float32)

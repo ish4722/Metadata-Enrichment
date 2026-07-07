@@ -10,9 +10,30 @@ to ``top_k``) when sentence-transformers is unavailable or the model fails to lo
 from __future__ import annotations
 
 import math
+import os
 from typing import List, Optional, Tuple
 
 from rag.common.schema import Chunk
+
+
+def _force_hf_offline() -> None:
+    """Force Hugging Face into offline mode so cached models load without a Hub call.
+
+    transformers>=5 runs a Hub-driven "processing class" auto-resolution when it can
+    reach huggingface.co online. The classic cross-encoder repos don't declare a
+    processor class, so that online path raises "Unrecognized processing class" and the
+    reranker silently disables itself. Loading from the local cache skips that path.
+    We set the env vars *and* patch the already-imported constant, since huggingface_hub
+    reads HF_HUB_OFFLINE at import time.
+    """
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    try:
+        import huggingface_hub.constants as _hf_const
+
+        _hf_const.HF_HUB_OFFLINE = True
+    except Exception:
+        pass
 
 
 def _sigmoid(x: float) -> float:
@@ -43,6 +64,7 @@ def get_reranker(model_name: str) -> Optional["CrossEncoder"]:
     if model_name not in _reranker_cache:
         try:
             print(f"Loading cross-encoder reranker ({model_name}) ...")
+            _force_hf_offline()
             _reranker_cache[model_name] = CrossEncoder(model_name)
             print("  [ok] reranker loaded")
         except Exception as e:

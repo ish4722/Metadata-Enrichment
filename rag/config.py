@@ -118,9 +118,9 @@ class RagConfig:
     # "hierarchical" - start from the matched chunks and add ancestor sections on
     #                  demand, re-prompting until the LLM can answer (see
     #                  rag.inference.hierarchical_answer).
-    context_mode: str = "hierarchical"          # "chunk" | "full_page" | "hierarchical"
+    context_mode: str = "full_page"       # "chunk" | "full_page" | "hierarchical"
     # Max number of ancestor levels to climb in hierarchical mode.
-    hierarchical_max_depth: int = 5
+    hierarchical_max_depth: int = 3
     save_pages_sent_to_llm: bool = False
 
     # ── LLM  ← SWAP LLM HERE ────────────────────────────────────────────────

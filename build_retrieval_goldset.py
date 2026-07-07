@@ -12,8 +12,19 @@ Per-field routing:
                                at DMS/NZMG/NZTM -> WGS84 conversion). Coords that
                                match GT -> correct(2); coords present but a
                                different location -> wrong(1); no coords -> drop.
-  * facility name / openv   -> LLM, answer-aware, graded. Chunks are BATCHED
-    ID / spud date             (several per call) to cut latency/cost.
+  * all other query labels  -> two-phase LLM, answer-BLIND. Labels are read from
+    (see queries.txt)          queries.txt / rag_evaluation.LLM_FIELDS:
+                               1) EXTRACT: ask each chunk what value it states for
+                               the field (the ground truth is NOT shown), batching
+                               several chunks per call. Chunks that state nothing
+                               for a field -> drop.
+                               2) VALIDATE: judge each extracted value against the
+                               ground truth using the SAME CORRECT/INCORRECT
+                               tolerances as the RAG pipeline's judge (dates +/-1
+                               day, coordinate conversion, formatting/synonyms), but
+                               BATCHED (several values per call) so cost/time stays
+                               roughly flat in the number of fields -> match =
+                               correct(2), different value = wrong(1).
 
 Robustness:
   * Chunks read from the embedded Chroma ``__section`` collection.
@@ -51,36 +62,52 @@ from rag.inference.llm import get_llm  # noqa: E402
 import evaluate_all  # noqa: E402
 
 # LLM-judged text fields: (query label, short key, human description).
+# The label MUST match both a queries.txt block label (for the judge question)
+# and a GROUND_TRUTH_EXTRACTORS key in rag_evaluation (for the target value).
+# lat+long is handled separately by the deterministic coordinate comparator.
 LLM_FIELDS = [
     ("facility name", "facility_name", "the well/facility name"),
     ("openv ID", "operating_environment", "the operating environment (e.g. Onshore/Offshore)"),
     ("facilityevent spud date", "spud_date", "the spud date / kick-off date of the well"),
+    ("country name", "country_name", "the country where the well is located"),
+    ("basin name", "basin_name", "the basin the well is found in"),
+    ("field name", "field_name", "the field the well is found in"),
+    ("default vertical measurement ID", "vertical_datum",
+     "the vertical measurement datum / reference elevation (e.g. KB, RT, GL, MSL)"),
+    ("current operator ID", "current_operator", "the current operator of the well"),
+    ("marker names", "marker_names",
+     "the formation markers / marker names (lithology or stratigraphy levels)"),
+    ("vertical measurement total depth", "total_depth_md",
+     "the total depth as measured depth (MD) of the well"),
+    ("completion date", "completion_date",
+     "the completion date (or plugged & abandoned / rig-released date) of the well"),
 ]
 KEY_TO_LABEL = {key: lbl for lbl, key, _ in LLM_FIELDS}
+LABEL_TO_FIELD = {lbl: (key, desc) for lbl, key, desc in LLM_FIELDS}
 COORD_LABEL = "lat+long"
 ALL_LABELS = [l for l, _, _ in LLM_FIELDS] + [COORD_LABEL]
 CHAR_CAP = 2500  # per-excerpt cap inside a batch prompt
 VERDICT_GRADE = {"correct": 2, "wrong": 1}
 
 
-def make_batch_prompt(excerpts, fields):
-    """excerpts: list[str]; fields: [(key, desc, value)] (non-null GT only)."""
+def make_extract_prompt(excerpts, fields):
+    """PHASE 1 (answer-BLIND). excerpts: list[str]; fields: [(key, desc)] (no GT).
+
+    Ask what value each excerpt states for each field, WITHOUT revealing the
+    ground truth, so the model cannot be biased toward the target.
+    """
     lines = [
-        "You grade whether document excerpts answer specific fields for ONE oil & gas well.",
+        "You extract specific field values from document excerpts about ONE oil & gas well.",
         "",
-        "Fields and their TARGET (ground-truth) values:",
+        "Fields to extract:",
     ]
-    for key, desc, value in fields:
-        lines.append(f'- {key}: {desc}. Target value = "{value}"')
+    for key, desc in fields:
+        lines.append(f"- {key}: {desc}")
     lines += [
         "",
-        "For EACH excerpt and EACH field decide one of:",
-        '  "correct" - answering this field using ONLY this excerpt yields the target value above.',
-        '  "wrong"   - this excerpt DOES state a value for this field, but a DIFFERENT one',
-        "              (a different well/event/date/place). It looks answerable but is not the target.",
-        "  omit      - the excerpt does not state this field at all (most excerpts).",
-        "Judge each field independently. Do NOT count mere mentions of a related word.",
-        "For dates, treat formats equal within 1 day as the same value.",
+        "For EACH excerpt, report the value it states for EACH field, using ONLY the text of",
+        "that excerpt. Copy the value as written; do NOT infer, normalize, translate, or guess.",
+        "If an excerpt does not state a field, omit that field for that excerpt.",
         "",
         "Excerpts:",
     ]
@@ -90,15 +117,15 @@ def make_batch_prompt(excerpts, fields):
     lines += [
         "",
         "Respond with ONLY a JSON object mapping each excerpt index (as a string) to an object of",
-        '{field_key: "correct"|"wrong"}, including ONLY fields that are correct or wrong and ONLY',
-        'excerpts that have at least one. Example: {"0": {"facility_name": "correct"},',
-        '"2": {"spud_date": "wrong", "facility_name": "correct"}}. If none match, respond {}.',
+        '{field_key: "extracted value"}, including ONLY fields the excerpt actually states and',
+        'ONLY excerpts that state at least one. Example: {"0": {"facility_name": "Maui-A"},',
+        '"2": {"spud_date": "12 Jan 1998", "facility_name": "Pohokura-1"}}. If none, respond {}.',
     ]
     return "\n".join(lines)
 
 
-def parse_batch_response(text, n):
-    """Return {index:int -> {label: "correct"|"wrong"}} parsed from a JSON-ish reply."""
+def parse_extract_response(text, n):
+    """Return {index:int -> {label: extracted_value_str}} from a JSON-ish reply."""
     out = {}
     if not text:
         return out
@@ -116,14 +143,67 @@ def parse_batch_response(text, n):
             continue
         if not (0 <= idx < n) or not isinstance(v, dict):
             continue
-        verdicts = {}
-        for key, verdict in v.items():
+        vals = {}
+        for key, val in v.items():
             lbl = KEY_TO_LABEL.get(key)
-            vd = str(verdict).strip().lower()
-            if lbl and vd in VERDICT_GRADE:
-                verdicts[lbl] = vd
-        if verdicts:
-            out[idx] = verdicts
+            if lbl and val is not None and str(val).strip():
+                vals[lbl] = str(val).strip()
+        if vals:
+            out[idx] = vals
+    return out
+
+
+def make_batch_judge_prompt(items):
+    """PHASE 2 (batched). A batched form of rag_evaluation.make_judge_prompt: judge
+    many (question, expected value, system answer) triples in ONE call, using the
+    SAME CORRECT/INCORRECT tolerances the RAG judge applies.
+    items: [(item_id, question, ground_truth, answer)].
+    """
+    lines = [
+        "You are a strict evaluator for a retrieval system. For EACH item below, decide whether",
+        "the SYSTEM ANSWER correctly conveys the EXPECTED VALUE for that item's question.",
+        "",
+        "Treat an answer as CORRECT if it states the same value as the expected value, allowing for",
+        "differences in formatting, units, abbreviations, synonyms, or extra surrounding text.",
+        "Apply these tolerances explicitly:",
+        "- DATES: accept any answer whose date is within +/- 1 calendar day of the expected date",
+        "  (this absorbs off-by-one and timezone/format differences), and ignore differences in date",
+        "  format (e.g. 6/03/2006 vs 2006-03-06). The spud date is the same as the start/kick-off date.",
+        "- COORDINATES: first CONVERT both the expected value and the system answer to WGS84 decimal",
+        "  degrees (latitude, longitude) regardless of input format (DMS, degrees-decimal-minutes,",
+        "  UTM/easting-northing, or decimal degrees), then treat them as a match if they refer to the",
+        "  same location within normal rounding tolerance. Sign/hemisphere (N/S, E/W) must agree.",
+        "Treat it as INCORRECT if it gives a different value, contradicts the expected value, refers to",
+        "a different entity, or says the information is unavailable. Judge each item independently.",
+        "",
+        "Items:",
+    ]
+    for item_id, question, ground_truth, answer in items:
+        lines.append(f"[{item_id}] Question: {question}")
+        lines.append(f"      Expected value: {ground_truth}")
+        lines.append(f"      System answer: {answer}")
+    lines += [
+        "",
+        'Respond with ONLY a JSON object mapping each item id (as a string) to "YES" (correct) or',
+        '"NO" (incorrect). Example: {"0": "YES", "1": "NO"}.',
+    ]
+    return "\n".join(lines)
+
+
+def parse_batch_judge_response(text):
+    """Return {item_id:str -> bool is_match} from a JSON-ish YES/NO reply."""
+    out = {}
+    if not text:
+        return out
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return out
+    try:
+        obj = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return out
+    for k, v in obj.items():
+        out[str(k)] = str(v).strip().lower().startswith("y")
     return out
 
 
@@ -203,6 +283,8 @@ def parse_args():
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--matched-dir", default=evaluate_all.DEFAULT_MATCHED_DIR)
     p.add_argument("--docs-dir", default=evaluate_all.DEFAULT_DOCS_DIR)
+    p.add_argument("--queries", default="queries.txt",
+                   help="Queries file; supplies the judge question per label (phase 2).")
     p.add_argument("--only", nargs="+", default=None)
     p.add_argument("--limit", type=int, default=None)
     p.add_argument("--output", default=os.path.join("output_table", "retrieval_goldset.json"))
@@ -217,6 +299,14 @@ async def main_async():
 
     matched, _ = evaluate_all.discover_docs(args.docs_dir, args.matched_dir, only=args.only)
     gt_path = {d["id"]: d["ground_truth"] for d in matched}
+
+    # Judge questions per label (phase 2), read from the same queries file the RAG
+    # pipeline uses. Missing labels fall back to a generic question from the desc.
+    questions = {q["label"]: q["question"]
+                 for q in rag_evaluation.parse_queries_file(args.queries)}
+
+    def question_for(lbl):
+        return questions.get(lbl) or f"What is {LABEL_TO_FIELD[lbl][1]}?"
 
     client = get_chroma_client(cfg.chroma_dir)
     col = client.get_collection(name=cfg.chroma_collection)
@@ -266,10 +356,9 @@ async def main_async():
     stat_lock = asyncio.Lock()
     t0 = time.perf_counter()
 
-    async def judge_batch(slice_chunks, active_fields):
-        """Return {local_index -> {label: verdict}} for a batch of chunks."""
+    async def _invoke(prompt):
+        """Run one LLM call, accounting for tokens/calls; return response text."""
         nonlocal calls
-        prompt = make_batch_prompt([c["text"] for c in slice_chunks], active_fields)
         async with sem:
             resp = await llm.ainvoke(prompt)
         text = resp.content if hasattr(resp, "content") else str(resp)
@@ -278,14 +367,30 @@ async def main_async():
             usage["input_tokens"] += u["input_tokens"]
             usage["output_tokens"] += u["output_tokens"]
             calls += 1
-        return parse_batch_response(text, len(slice_chunks))
+        return text
+
+    async def extract_batch(slice_chunks, fields):
+        """PHASE 1: {local_index -> {label: extracted_value}} for a batch of chunks."""
+        text = await _invoke(make_extract_prompt([c["text"] for c in slice_chunks], fields))
+        return parse_extract_response(text, len(slice_chunks))
+
+    async def judge_batch(items):
+        """PHASE 2 (batched): validate many extracted values in ONE judge call.
+
+        Uses the same CORRECT/INCORRECT tolerances as rag_evaluation's RAG judge,
+        so results match how the pipeline scores answers, but batched to keep the
+        call count (and cost) roughly flat in the number of fields.
+        items: [(item_id, question, ground_truth, extracted)].
+        """
+        text = await _invoke(make_batch_judge_prompt(items))
+        return parse_batch_judge_response(text)
 
     for i, doc_id in enumerate(to_run, 1):
         with open(gt_path[doc_id], "r", encoding="utf-8") as f:
             matched_json = json.load(f)
         gts = {lbl: rag_evaluation.extract_ground_truth(lbl, matched_json) for lbl in ALL_LABELS}
-        active_fields = [(k, d, gts[lbl]["value"]) for lbl, k, d in LLM_FIELDS
-                         if gts[lbl]["value"] is not None]
+        # answer-BLIND extraction fields (key, desc); GT withheld from the prompt
+        extract_fields = [(k, d) for lbl, k, d in LLM_FIELDS if gts[lbl]["value"] is not None]
         coord_value = gts[COORD_LABEL]["value"]
         chunks = fetch_doc_chunks(col, doc_id)
 
@@ -302,18 +407,37 @@ async def main_async():
                 rel[COORD_LABEL].append({"chunk_id": c["id"], "page": c["page"],
                                          "grade": grade, "verdict": "correct" if is_match else "wrong",
                                          "matched_by": "comparator"})
-        # text fields: batched LLM (graded)
-        if active_fields:
+        # text fields: PHASE 1 blind extraction, then PHASE 2 correctness check
+        if extract_fields:
             batches = [chunks[j:j + args.batch_size] for j in range(0, len(chunks), args.batch_size)]
-            results = await asyncio.gather(*(judge_batch(b, active_fields) for b in batches))
+            results = await asyncio.gather(*(extract_batch(b, extract_fields) for b in batches))
+            # collect every chunk that stated a value for a field
+            candidates = []  # [(chunk, label, extracted_value)]
             for b_idx, res in enumerate(results):
                 base = b_idx * args.batch_size
-                for local_idx, verdicts in res.items():
+                for local_idx, vals in res.items():
                     c = chunks[base + local_idx]
-                    for lbl, verdict in verdicts.items():
+                    for lbl, value in vals.items():
+                        candidates.append((c, lbl, value))
+            # PHASE 2: validate extracted values with the RAG judge, BATCHED
+            # (several candidates per call) and run concurrently across batches.
+            if candidates:
+                groups = [candidates[j:j + args.batch_size]
+                          for j in range(0, len(candidates), args.batch_size)]
+                items_per_group = [
+                    [(str(k), question_for(lbl), gts[lbl]["value"], value)
+                     for k, (c, lbl, value) in enumerate(group)]
+                    for group in groups
+                ]
+                verdict_maps = await asyncio.gather(*(judge_batch(it) for it in items_per_group))
+                for group, vmap in zip(groups, verdict_maps):
+                    for k, (c, lbl, value) in enumerate(group):
+                        # a value was extracted, so default to wrong(1) if inconclusive
+                        is_match = vmap.get(str(k), False)
+                        verdict = "correct" if is_match else "wrong"
                         rel[lbl].append({"chunk_id": c["id"], "page": c["page"],
                                          "grade": VERDICT_GRADE[verdict], "verdict": verdict,
-                                         "matched_by": "llm"})
+                                         "matched_by": "llm-judge", "extracted": value})
 
         entry = {}
         for lbl in ALL_LABELS:

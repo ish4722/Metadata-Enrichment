@@ -68,14 +68,12 @@ def _add_table(doc: Document, rows: List[List[str]]) -> None:
                     run.bold = True
 
 
-def convert(md_path: str, docx_path: str) -> str:
-    with open(md_path, encoding="utf-8") as f:
-        lines = f.read().splitlines()
+def _heading_level(base: int, offset: int = 0) -> int:
+    return min(base + offset, 9)
 
-    doc = Document()
-    doc.styles["Normal"].font.name = "Calibri"
-    doc.styles["Normal"].font.size = Pt(11)
 
+def append_markdown_to_doc(doc: Document, lines: List[str], *, heading_offset: int = 0) -> None:
+    """Append Markdown content to an existing document."""
     i = 0
     n = len(lines)
     while i < n:
@@ -86,7 +84,6 @@ def convert(md_path: str, docx_path: str) -> str:
             i += 1
             continue
 
-        # Tables: a run of pipe rows (skip the --- separator row).
         if _is_table_row(line):
             table_rows: List[List[str]] = []
             while i < n and _is_table_row(lines[i]):
@@ -96,14 +93,12 @@ def convert(md_path: str, docx_path: str) -> str:
             _add_table(doc, table_rows)
             continue
 
-        # Headings.
         if stripped.startswith("### "):
-            doc.add_heading(stripped[4:], level=3)
+            doc.add_heading(stripped[4:], level=_heading_level(3, heading_offset))
         elif stripped.startswith("## "):
-            doc.add_heading(stripped[3:], level=2)
+            doc.add_heading(stripped[3:], level=_heading_level(2, heading_offset))
         elif stripped.startswith("# "):
-            doc.add_heading(stripped[2:], level=1)
-        # Bullets (one nesting level supported via leading spaces).
+            doc.add_heading(stripped[2:], level=_heading_level(1, heading_offset))
         elif stripped.startswith("- "):
             indent = len(line) - len(line.lstrip(" "))
             style = "List Bullet 2" if indent >= 2 else "List Bullet"
@@ -117,6 +112,15 @@ def convert(md_path: str, docx_path: str) -> str:
             _add_runs_with_bold(para, stripped)
         i += 1
 
+
+def convert(md_path: str, docx_path: str) -> str:
+    with open(md_path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+
+    doc = Document()
+    doc.styles["Normal"].font.name = "Calibri"
+    doc.styles["Normal"].font.size = Pt(11)
+    append_markdown_to_doc(doc, lines)
     doc.save(docx_path)
     return docx_path
 

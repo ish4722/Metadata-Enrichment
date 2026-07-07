@@ -40,6 +40,8 @@ import rag_evaluation  # noqa: E402
 
 import docs  # noqa: E402
 import goldset_review  # noqa: E402
+import enrichment  # noqa: E402
+import ground_truth  # noqa: E402
 from engine import ENGINE  # noqa: E402
 
 app = FastAPI(title="RAG Explorer")
@@ -123,6 +125,19 @@ def list_queries() -> Dict[str, Any]:
             "validatable": validatable,
         })
     return {"queries": out}
+
+
+@app.get("/api/matched/{doc_id}")
+def get_matched(doc_id: str) -> JSONResponse:
+    """The structured JSON already on disk for a doc (matched_json/<id>.json).
+
+    Lets the Metadata Enrichment UI skip the manual JSON upload when the uploaded
+    PDF already has a matching structured file.
+    """
+    record = _load_matched(doc_id)
+    if not isinstance(record, dict):
+        raise HTTPException(status_code=404, detail=f"No structured JSON on file for '{doc_id}'.")
+    return JSONResponse(record)
 
 
 @app.post("/api/upload")
@@ -232,6 +247,117 @@ async def query(request: Request) -> StreamingResponse:
         ground_truth=ground_truth,
         overrides=overrides,
     ))
+
+
+# ── metadata enrichment ──────────────────────────────────────────────────────
+@app.get("/api/enrichment/documents")
+def enrichment_documents() -> Dict[str, Any]:
+    return {"documents": docs.list_documents()}
+
+
+@app.post("/api/enrichment/run")
+async def enrichment_run(request: Request) -> StreamingResponse:
+    body = await request.json()
+    doc_id = body.get("doc_id")
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="doc_id is required.")
+    datalab = docs.datalab_path(doc_id)
+    if not datalab:
+        raise HTTPException(status_code=404, detail=f"No datalab output for '{doc_id}'.")
+
+    # The incomplete structured JSON is uploaded and sent inline; fall back to the
+    # on-disk matched_json/<id>.json when the client did not provide one.
+    record = body.get("structured")
+    if not isinstance(record, dict):
+        record = _load_matched(doc_id)
+    if not isinstance(record, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="A structured JSON to enrich is required (upload one or add matched_json).",
+        )
+
+    overrides = {
+        "embedding_model": body.get("embedding_model"),
+        "retrieval_mode": body.get("retrieval_mode"),
+        "hybrid_alpha": body.get("hybrid_alpha"),
+        "use_reranker": body.get("use_reranker"),
+        "top_k": body.get("top_k"),
+    }
+
+    # Cap how many fields become queries (top N) so demos stay quick. Defaults to
+    # enrichment.DEMO_MAX_ATTRIBUTES; pass max_attributes=0/null for no limit.
+    max_attributes = body.get("max_attributes", enrichment.DEMO_MAX_ATTRIBUTES)
+
+    return _ndjson(enrichment.run_enrichment(
+        doc_id=doc_id,
+        datalab_path=datalab,
+        record=record,
+        overrides=overrides,
+        max_attributes=max_attributes,
+    ))
+
+
+# ── ground truth enrichment ───────────────────────────────────────────────────
+@app.get("/api/ground-truth/documents")
+def ground_truth_documents() -> Dict[str, Any]:
+    return {"documents": docs.list_documents()}
+
+
+@app.post("/api/ground-truth/run")
+async def ground_truth_run(request: Request) -> StreamingResponse:
+    body = await request.json()
+    doc_id = body.get("doc_id")
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="doc_id is required.")
+    datalab = docs.datalab_path(doc_id)
+    if not datalab:
+        raise HTTPException(status_code=404, detail=f"No datalab output for '{doc_id}'.")
+
+    record = body.get("structured")
+    if not isinstance(record, dict):
+        record = _load_matched(doc_id)
+    if not isinstance(record, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="A structured JSON to enrich is required (upload one or add matched_json).",
+        )
+
+    overrides = {
+        "embedding_model": body.get("embedding_model"),
+        "retrieval_mode": body.get("retrieval_mode"),
+        "hybrid_alpha": body.get("hybrid_alpha"),
+        "use_reranker": body.get("use_reranker"),
+        "top_k": body.get("top_k"),
+    }
+
+    # Run/answer every attribute (no cap) so each field can be verified, and cache
+    # generated queries into queries.txt (reused on later runs).
+    max_attributes = body.get("max_attributes", 0)
+
+    return _ndjson(enrichment.run_enrichment(
+        doc_id=doc_id,
+        datalab_path=datalab,
+        record=record,
+        overrides=overrides,
+        max_attributes=max_attributes,
+        persist_queries=True,
+        queries_path=QUERIES_PATH,
+    ))
+
+
+@app.post("/api/ground-truth/save")
+async def ground_truth_save(request: Request) -> Dict[str, Any]:
+    body = await request.json()
+    doc_id = body.get("doc_id")
+    data = body.get("data")
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="doc_id is required.")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="data must be an object of attribute -> value.")
+    try:
+        return ground_truth.save_ground_truth(doc_id, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ── PDF serving (Range-enabled for large files) ──────────────────────────────

@@ -140,6 +140,16 @@ def build_report(model_tag: str, results: List[Dict[str, Any]]) -> str:
         ["LLM", "Gen in", "Gen out", "Judge in", "Judge out", "Price in/out"], trows))
     parts.append("")
 
+    # OpenAI usage/cost callback metadata (captured live from every LLM call).
+    parts.append("## LLM call metadata (OpenAI callback)\n")
+    parts.append("Captured directly from the OpenAI responses across generation "
+                 "and judge calls. `Callback $` prices these counts with the "
+                 "model's list price and applies the prompt-cache discount to "
+                 "cached tokens.\n")
+    parts.append(common.llm_meta_table(
+        [(r["llm_model"], r["summary"], r["llm_model"]) for r in ok], first_col="LLM"))
+    parts.append("")
+
     skipped = [r for r in results if r.get("status") != "ok"]
     if skipped:
         parts.append("## Unavailable / failed\n")

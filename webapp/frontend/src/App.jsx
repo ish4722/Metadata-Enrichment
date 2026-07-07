@@ -8,6 +8,8 @@ import ChunksView from "./components/ChunksView.jsx";
 import AnswerValidation from "./components/AnswerValidation.jsx";
 import PdfViewer from "./components/PdfViewer.jsx";
 import Home from "./components/Home.jsx";
+import Enrichment from "./components/Enrichment.jsx";
+import GroundTruth from "./components/GroundTruth.jsx";
 
 const STAGES_RESET = {
   embed: "pending",
@@ -207,7 +209,21 @@ export default function App() {
   );
 
   if (view === "home") {
-    return <Home onOpenExplorer={() => setView("explorer")} />;
+    return (
+      <Home
+        onOpenExplorer={() => setView("explorer")}
+        onOpenEnrichment={() => setView("enrichment")}
+        onOpenGroundTruth={() => setView("groundtruth")}
+      />
+    );
+  }
+
+  if (view === "enrichment") {
+    return <Enrichment onHome={() => setView("home")} />;
+  }
+
+  if (view === "groundtruth") {
+    return <GroundTruth onHome={() => setView("home")} />;
   }
 
   return (

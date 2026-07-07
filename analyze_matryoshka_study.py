@@ -114,6 +114,7 @@ def _extract(data: Dict[str, Any], path: str) -> Dict[str, Any]:
         "token_acc": s.get("combined_token_accuracy"),
         "retrieval_acc": s.get("combined_retrieval_accuracy"),
         "escalation": s.get("escalation", {}),
+        "llm_meta": s.get("llm_meta", {}) or {},
         "cost": stored_cost,
         "embed_tokens": embed_tokens,
         "embed_price_1m": price_1m,
@@ -185,6 +186,35 @@ def _section_quality_curves(by_model: Dict[str, List[Dict[str, Any]]]) -> str:
             ])
         out.append(_md_table(
             ["Dim", "LLM acc", "LLM retention", "Token acc", "Retrieval acc"], rows))
+        out.append("")
+    return "\n".join(out)
+
+
+def _section_llm_meta(by_model: Dict[str, List[Dict[str, Any]]]) -> str:
+    def _n(v: Any) -> str:
+        return f"{int(v):,}" if isinstance(v, (int, float)) else "N/A"
+
+    out = ["## LLM call metadata (OpenAI callback)\n",
+           "Captured live from every generation/judge call: successful requests, "
+           "prompt-cache hits and reasoning tokens straight from the OpenAI usage "
+           "payload.\n"]
+    for model, runs in by_model.items():
+        out.append(f"### {model}\n")
+        rows = []
+        for r in runs:
+            m = r.get("llm_meta", {}) or {}
+            rows.append([
+                str(r["dim"]),
+                _n(m.get("successful_requests")),
+                _n(m.get("prompt_tokens")),
+                _n(m.get("cached_prompt_tokens")),
+                _pct(m.get("cache_hit_rate")),
+                _n(m.get("reasoning_tokens")),
+                _n(m.get("completion_tokens")),
+            ])
+        out.append(_md_table(
+            ["Dim", "Requests", "Prompt tok", "Cached tok", "Cache hit",
+             "Reason tok", "Compl tok"], rows))
         out.append("")
     return "\n".join(out)
 
@@ -460,6 +490,7 @@ def _build_aggregate(runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "token_accuracy": r["token_acc"],
                 "retrieval_accuracy": r["retrieval_acc"],
                 "escalation": r["escalation"],
+                "llm_meta": r["llm_meta"],
                 "cost_usd_stored": r["cost"],
                 "cost_usd_corrected": {
                     "embed_price_per_1m": r["embed_price_1m"],
@@ -506,6 +537,7 @@ def run(output_dir: str = DEFAULT_OUTPUT_DIR) -> Optional[str]:
         _section_diminishing(by_model),
         _section_per_label(by_model),
         _section_cost_storage(by_model),
+        _section_llm_meta(by_model),
         _section_memory(by_model),
         _section_mteb_curves(by_model),
         _section_rerank_gap(by_model),

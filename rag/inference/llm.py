@@ -19,6 +19,7 @@ from typing import Any, Optional
 
 from rag.common.token_utils import is_auth_error, strip_bearer
 from rag.config import RagConfig
+from rag.inference.usage_callback import LLMUsageTracker
 
 try:
     from langchain_openai import ChatOpenAI
@@ -35,11 +36,14 @@ class _RefreshingChatLLM:
     delegates any other attribute access to the live ChatOpenAI client.
     """
 
-    def __init__(self, config: RagConfig):
+    def __init__(self, config: RagConfig, usage_tracker: Optional[LLMUsageTracker] = None):
         self._config = config
         self._client: Optional[Any] = None
         # May be disabled at runtime if the model rejects a non-default temperature.
         self._temperature: Optional[float] = getattr(config, "llm_temperature", 0.0)
+        # Persist the usage callback across token refreshes so cost/metadata keep
+        # accumulating even when the underlying ChatOpenAI is rebuilt.
+        self.usage_tracker: LLMUsageTracker = usage_tracker or LLMUsageTracker()
 
     def _build(self) -> Any:
         token = strip_bearer(get_token())
@@ -48,6 +52,7 @@ class _RefreshingChatLLM:
             base_url=self._config.llm_base_url,
             api_key=token,
             default_headers={"slb-partition-id": self._config.partition_id},
+            callbacks=[self.usage_tracker],
         )
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
@@ -119,12 +124,19 @@ class _RefreshingChatLLM:
         return getattr(self._ensure(), name)
 
 
-def get_llm(config: RagConfig) -> Optional[Any]:
-    """Construct the (token-refreshing) ChatOpenAI client, or None if unavailable."""
+def get_llm(config: RagConfig,
+            usage_tracker: Optional[LLMUsageTracker] = None) -> Optional[Any]:
+    """Construct the (token-refreshing) ChatOpenAI client, or None if unavailable.
+
+    The returned client always exposes a ``.usage_tracker`` (an
+    :class:`LLMUsageTracker`) that accumulates token usage, cost inputs and the
+    OpenAI response metadata for every call made through it. Pass an existing
+    tracker to share accounting across clients.
+    """
     if not HAS_LLM:
         return None
     try:
-        llm = _RefreshingChatLLM(config)
+        llm = _RefreshingChatLLM(config, usage_tracker=usage_tracker)
         llm._ensure()  # build now so an unavailable stack returns None up front
         return llm
     except Exception as exc:  # noqa: BLE001

@@ -42,6 +42,39 @@ const TOOLS = [
     ),
   },
   {
+    id: "enrichment",
+    title: "Metadata Enrichment",
+    tagline: "Fill & validate structured metadata",
+    desc:
+      "Point at a document and let the pipeline answer every OSDU attribute: enrich null fields, validate prefilled values against ground truth, review chunks + PDF highlights with a human in the loop, and download the enriched JSON.",
+    chips: ["auto-enrich", "confidence", "human-in-loop"],
+    accent: "var(--accent-2)",
+    needsBackend: true,
+    icon: (
+      <>
+        <path d="M4 4h16v4H4z" />
+        <path d="M4 12h10v4H4z" />
+        <polyline points="17 14 19 16 22 13" />
+      </>
+    ),
+  },
+  {
+    id: "groundtruth",
+    title: "Ground Truth Enrichment",
+    tagline: "Fix wrong / null ground truth",
+    desc:
+      "Answer every attribute, verify + correct the values with a human in the loop, and save an enhanced ground-truth dataset (all core attributes + your verified extras) to validate your models against clean data.",
+    chips: ["query cache", "human-corrected", "saved dataset"],
+    accent: "var(--accent)",
+    needsBackend: true,
+    icon: (
+      <>
+        <path d="M12 2 3 7v6c0 5 3.5 7.5 9 9 5.5-1.5 9-4 9-9V7z" />
+        <polyline points="9 12 11 14 15 10" />
+      </>
+    ),
+  },
+  {
     id: "analyzer",
     title: "JSON Field Analyzer",
     tagline: "Drop a JSON, inspect its fields",
@@ -60,10 +93,14 @@ const TOOLS = [
   },
 ];
 
-export default function Home({ onOpenExplorer }) {
+export default function Home({ onOpenExplorer, onOpenEnrichment, onOpenGroundTruth }) {
   function handleOpen(tool) {
     if (tool.id === "explorer") {
       onOpenExplorer();
+    } else if (tool.id === "enrichment") {
+      onOpenEnrichment();
+    } else if (tool.id === "groundtruth") {
+      onOpenGroundTruth();
     } else {
       window.open(tool.href, "_blank", "noopener");
     }

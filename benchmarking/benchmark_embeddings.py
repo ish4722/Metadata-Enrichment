@@ -165,6 +165,14 @@ def build_report(results: List[Dict[str, Any]]) -> str:
          "Embed tokens", "LLM tokens"], crows))
     parts.append("")
 
+    # OpenAI usage/cost callback metadata (generation + judge share one LLM here).
+    parts.append("## LLM call metadata (OpenAI callback)\n")
+    parts.append("Captured live from every generation/judge call. Cached and "
+                 "reasoning tokens come straight from the OpenAI usage payload.\n")
+    parts.append(common.llm_meta_table(
+        [(r["tag"], r["summary"], r["cost_recomputed"].get("llm_model")) for r in ok]))
+    parts.append("")
+
     skipped = [r for r in results if r.get("status") != "ok"]
     if skipped:
         parts.append("## Skipped\n")

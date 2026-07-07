@@ -14,7 +14,23 @@ export const api = {
   document: (id) => getJson(`/documents/${id}`),
   embeddingModels: () => getJson("/embedding-models"),
   queries: () => getJson("/queries"),
+  enrichmentDocuments: () => getJson("/enrichment/documents"),
+  groundTruthDocuments: () => getJson("/ground-truth/documents"),
+  matched: (id) => getJson(`/matched/${id}`),
   pdfUrl: (id) => `${BASE}/pdf/${id}`,
+
+  async groundTruthSave(body) {
+    const resp = await fetch(`${BASE}/ground-truth/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`ground-truth/save -> ${resp.status} ${text}`);
+    }
+    return resp.json();
+  },
 
   async upload(file) {
     const form = new FormData();

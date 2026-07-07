@@ -68,8 +68,14 @@ SYSTEM_PREAMBLE = (
     "{\n"
     '  "answer": "<concise answer text>",\n'
     '  "source_pages": [<integer page numbers cited from the excerpts>],\n'
-    '  "available": <true if the excerpts contain the answer, false otherwise>\n'
-    "}\n\n"
+    '  "available": <true if the excerpts contain the answer, false otherwise>,\n'
+    '  "confidence": <number between 0.0 and 1.0 for how certain you are>\n'
+    "}\n"
+    "For \"confidence\": rate high (close to 1.0) when the excerpts directly and "
+    "unambiguously state the answer; rate low (close to 0.0) when you must guess, "
+    "the excerpts are ambiguous/conflicting, or you are confused; and set a low "
+    "value together with \"available\": false when nothing in the excerpts "
+    "supports an answer.\n\n"
 )
 
 
@@ -118,18 +124,35 @@ def parse_generator_response(raw: str) -> str:
     return raw
 
 
+def _parse_confidence(value: Any) -> Optional[float]:
+    """Coerce a generator ``confidence`` field to a float in [0, 1] or ``None``."""
+    if value is None:
+        return None
+    try:
+        conf = float(value)
+    except (TypeError, ValueError):
+        return None
+    if conf < 0.0:
+        return 0.0
+    if conf > 1.0:
+        return 1.0
+    return conf
+
+
 def parse_generator_json(raw: str) -> Dict[str, Any]:
-    """Parse a generator reply into ``{answer, available, source_pages}``.
+    """Parse a generator reply into ``{answer, available, source_pages, confidence}``.
 
     Robust to models that wrap the JSON in prose or markdown fences. When the
     ``available`` flag is missing or malformed it defaults to ``True`` whenever a
     non-empty answer is present, so escalation does not loop forever on a reply
-    that simply omitted the flag.
+    that simply omitted the flag. ``confidence`` is ``None`` when the model did
+    not report a usable numeric score.
     """
     obj = _extract_json_object(raw)
     if obj is None:
         text = (raw or "").strip()
-        return {"answer": text, "available": bool(text), "source_pages": []}
+        return {"answer": text, "available": bool(text), "source_pages": [],
+                "confidence": None}
 
     answer = obj.get("answer")
     answer_str = "" if answer is None else str(answer)
@@ -146,7 +169,10 @@ def parse_generator_json(raw: str) -> Dict[str, Any]:
     if not isinstance(source_pages, list):
         source_pages = []
 
-    return {"answer": answer_str, "available": avail, "source_pages": source_pages}
+    confidence = _parse_confidence(obj.get("confidence"))
+
+    return {"answer": answer_str, "available": avail, "source_pages": source_pages,
+            "confidence": confidence}
 
 
 def make_prompt(

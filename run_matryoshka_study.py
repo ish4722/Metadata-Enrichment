@@ -112,7 +112,8 @@ def run_one(
     print(f"[{tag}] inference phase done in {time.perf_counter() - t_run:.1f}s")
 
     summary = summarize(results, embed_tokens=runner.embed_tokens,
-                        embed_cost_usd=runner.embed_cost_usd)
+                        embed_cost_usd=runner.embed_cost_usd,
+                        llm_meta=runner.llm_usage_snapshot())
 
     print(f"[{tag}] scoring MTEB retrieval metrics against gold set ...")
     mteb = score_matryoshka_retrieval(cfg, goldset_path, queries_path="queries.txt")

@@ -117,11 +117,17 @@ def load_queries(path: str = evaluate_all.DEFAULT_QUERIES) -> List[Dict[str, str
 
 
 def collection_vector_count(cfg: RagConfig) -> int:
-    """Number of vectors already stored for ``cfg``'s collection (0 if absent)."""
-    try:
-        import chromadb
+    """Number of vectors already stored for ``cfg``'s collection (0 if absent).
 
-        client = chromadb.PersistentClient(path=cfg.chroma_dir)
+    Uses the pipeline's own ``get_chroma_client`` so the client settings match
+    the ones BatchRunner will use: Chroma caches one client per path and raises
+    "instance already exists ... with different settings" if a second client is
+    opened for the same path with different settings.
+    """
+    try:
+        from rag.indexing.chroma_store import get_chroma_client
+
+        client = get_chroma_client(cfg.chroma_dir)
         for col in client.list_collections():
             if col.name == cfg.chroma_collection:
                 return col.count()
@@ -156,7 +162,8 @@ def run_end_to_end(
     run_s = time.perf_counter() - t_run
 
     summary = summarize(results, embed_tokens=runner.embed_tokens,
-                        embed_cost_usd=runner.embed_cost_usd)
+                        embed_cost_usd=runner.embed_cost_usd,
+                        llm_meta=runner.llm_usage_snapshot())
     summary["wall_time_s"] = {"build": build_s, "inference": run_s}
     return summary
 
@@ -251,3 +258,57 @@ def usd(v: Optional[float], decimals: int = 4) -> str:
 
 def num(v: Optional[float]) -> str:
     return f"{int(v):,}" if isinstance(v, (int, float)) else "N/A"
+
+
+# ---------------------------------------------------------------------------
+# OpenAI usage/cost callback metadata (surfaced from summary["llm_meta"])
+# ---------------------------------------------------------------------------
+
+# Column headers for the shared "LLM call metadata" table.
+LLM_META_HEADERS = [
+    "Requests", "Prompt tok", "Cached tok", "Cache hit",
+    "Reason tok", "Compl tok", "Callback $",
+]
+
+
+def callback_cost(meta: Dict[str, Any], llm_model: str) -> Optional[float]:
+    """USD from the callback's token counts using per-model list prices.
+
+    Mirrors ``LLMUsageTracker.cost``: cached prompt tokens are billed at 25% of
+    the input price (OpenAI prompt-cache discount). Returns None when the model
+    price is unknown or no usage was captured.
+    """
+    spec = model_specs.LLM_SPECS.get(llm_model)
+    if not spec or not meta:
+        return None
+    inp = float(spec["input_per_1m"])
+    out = float(spec["output_per_1m"])
+    prompt = int(meta.get("prompt_tokens", 0) or 0)
+    cached = int(meta.get("cached_prompt_tokens", 0) or 0)
+    completion = int(meta.get("completion_tokens", 0) or 0)
+    billable = max(prompt - cached, 0)
+    return (
+        billable / 1_000_000.0 * inp
+        + cached / 1_000_000.0 * inp * 0.25
+        + completion / 1_000_000.0 * out
+    )
+
+
+def llm_meta_cells(summary: Dict[str, Any], llm_model: str) -> List[str]:
+    """Formatted metadata cells (aligned with :data:`LLM_META_HEADERS`)."""
+    meta = summary.get("llm_meta", {}) or {}
+    return [
+        num(meta.get("successful_requests")),
+        num(meta.get("prompt_tokens")),
+        num(meta.get("cached_prompt_tokens")),
+        pct(meta.get("cache_hit_rate")),
+        num(meta.get("reasoning_tokens")),
+        num(meta.get("completion_tokens")),
+        usd(callback_cost(meta, llm_model)),
+    ]
+
+
+def llm_meta_table(entries: List[Any], first_col: str = "Config") -> str:
+    """Markdown metadata table for ``entries`` = [(name, summary, llm_model), ...]."""
+    rows = [[name, *llm_meta_cells(summary, llm_model)] for name, summary, llm_model in entries]
+    return md_table([first_col, *LLM_META_HEADERS], rows)

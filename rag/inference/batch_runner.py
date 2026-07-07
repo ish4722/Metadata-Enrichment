@@ -134,6 +134,11 @@ class BatchRunner:
         if self.llm is None:
             print("[warn] LLM unavailable - will measure retrieval only.")
 
+    def llm_usage_snapshot(self) -> Dict[str, Any]:
+        """OpenAI usage/metadata captured by the LLM callback for this run."""
+        tracker = getattr(self.llm, "usage_tracker", None)
+        return tracker.snapshot() if tracker is not None else {}
+
     # ── build phase ──────────────────────────────────────────────────────────
     def build_all(self, docs: List[Dict[str, str]]) -> None:
         """Ensure every doc is embedded into Chroma (embed-once).
@@ -361,6 +366,7 @@ def summarize(
     results: List[QueryResult],
     embed_tokens: int = 0,
     embed_cost_usd: float = 0.0,
+    llm_meta: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     rows = [_qr_to_row(r) for r in results]
     total = len(rows)
@@ -462,6 +468,10 @@ def summarize(
             "judge": judge_time,
             "total": retrieval_time + gen_time + judge_time,
         },
+        # OpenAI usage/cost callback metadata (successful requests, cached +
+        # reasoning tokens, per-model split, finish reasons). Empty when the LLM
+        # was unavailable or the callback captured nothing.
+        "llm_meta": llm_meta or {},
         "per_query": rows,
     }
 
@@ -657,7 +667,8 @@ def main() -> None:
     print(f"Inference phase done in {time.perf_counter() - t1:.1f}s")
 
     summary = summarize(results, embed_tokens=runner.embed_tokens,
-                        embed_cost_usd=runner.embed_cost_usd)
+                        embed_cost_usd=runner.embed_cost_usd,
+                        llm_meta=runner.llm_usage_snapshot())
     print_summary(summary)
 
     run_config = {
