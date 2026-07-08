@@ -342,6 +342,7 @@ async def ground_truth_run(request: Request) -> StreamingResponse:
         max_attributes=max_attributes,
         persist_queries=True,
         queries_path=QUERIES_PATH,
+        guaranteed_core=True,
     ))
 
 

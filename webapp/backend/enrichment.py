@@ -76,6 +76,28 @@ _QUERIES_WRITE_LOCK = threading.Lock()
 # hand-written (core) one in the queries file.
 _GENERATED_MARKER = "*"
 
+# The ground-truth tool always treats the top N queries in queries.txt as the
+# "core" attributes and guarantees a saved value for each.
+CORE_QUERY_COUNT = 12
+
+# Canonical OSDU field key to use for a core attribute when the uploaded record
+# has no matching field of its own (keyed by the normalized core label). Keeps
+# the saved ground truth consistent across documents.
+CORE_CANONICAL_KEYS: Dict[str, str] = {
+    "facility name": "FacilityName",
+    "lat+long": "SpatialLocation.Wgs84Coordinates",
+    "openv id": "OperatingEnvironmentID",
+    "facilityevent spud date": "FacilityEvents.SpudDate",
+    "country name": "CountryName",
+    "basin name": "GeoContexts.BasinID",
+    "field name": "FieldName",
+    "default vertical measurement id": "DefaultVerticalMeasurementID",
+    "current operator id": "CurrentOperatorID",
+    "marker names": "MarkerNames",
+    "vertical measurement total depth": "VerticalMeasurements.TotalDepthMD",
+    "completion date": "FacilityEvents.CompletionDate",
+}
+
 # Labels whose answers/ground truth are dates (normalized to YYYY-MM-DD).
 _DATE_LABELS = {"facilityevent spud date", "completion date"}
 
@@ -201,24 +223,82 @@ def _load_query_cache(queries_path: Optional[str]) -> Dict[str, Tuple[str, str]]
 
 
 def _core_labels(queries_path: Optional[str]) -> List[str]:
-    """Return the hand-written (core) labels: those without the generated marker."""
+    """Return the core labels: the top ``CORE_QUERY_COUNT`` queries in the file.
+
+    These are the hand-written attributes at the top of ``queries.txt`` (the ones
+    without the generated ``*`` marker); the ground-truth tool always treats them
+    as core and guarantees a row + saved value for each.
+    """
     if not queries_path or not os.path.isfile(queries_path):
         return []
     try:
         parsed = rag_evaluation.parse_queries_file(queries_path)
     except Exception:  # noqa: BLE001
         return []
-    core: List[str] = []
+    labels: List[str] = []
     seen: set[str] = set()
     for q in parsed:
         label = (q.get("label") or "").strip()
-        if not label or label.endswith(_GENERATED_MARKER):
+        if not label:
             continue
         key = label.lower()
         if key not in seen:
             seen.add(key)
-            core.append(label)
-    return core
+            labels.append(label)
+        if len(labels) >= CORE_QUERY_COUNT:
+            break
+    return labels
+
+
+def _merge_core_attributes(
+    attrs: List[ExtractedAttribute],
+    queries_path: Optional[str],
+    record_data: Dict[str, Any],
+) -> List[ExtractedAttribute]:
+    """Guarantee the top-12 core attributes are present, then keep extra fields.
+
+    For every core label (top of ``queries.txt``) we reuse the matching record
+    field when one exists (so we keep its real key + value); otherwise we inject a
+    placeholder attribute keyed by a canonical OSDU field name with a null value,
+    so the pipeline still answers it from the PDF. Core attributes come first (in
+    queries order), followed by any non-core record fields.
+    """
+    core_lbls = _core_labels(queries_path)
+    if not core_lbls:
+        return attrs
+
+    # Map normalized-core-label -> the record attribute that matches it (if any).
+    existing_by_core: Dict[str, ExtractedAttribute] = {}
+    extras: List[ExtractedAttribute] = []
+    core_norms = {normalize_attribute(l) for l in core_lbls}
+    for a in attrs:
+        norm = normalize_attribute(a.label or a.raw_name)
+        if norm in core_norms and norm not in existing_by_core:
+            existing_by_core[norm] = a
+        else:
+            extras.append(a)
+
+    merged: List[ExtractedAttribute] = []
+    for label in core_lbls:
+        norm = normalize_attribute(label)
+        existing = existing_by_core.get(norm)
+        if existing is not None:
+            # Keep the record's real key/value but pin the label to the core one.
+            merged.append(ExtractedAttribute(
+                raw_name=existing.raw_name, label=label, is_null=existing.is_null
+            ))
+        else:
+            raw_name = CORE_CANONICAL_KEYS.get(norm, label)
+            is_null = _is_empty(record_data.get(raw_name))
+            # The value may live nested (e.g. FacilityEvents[], GeoContexts[]); let
+            # the RAG pipeline's extractor decide whether ground truth exists.
+            if is_null and label.strip().lower() in rag_evaluation.GROUND_TRUTH_EXTRACTORS:
+                resolved = rag_evaluation.extract_ground_truth(label, record_data)
+                if resolved.get("value") is not None:
+                    is_null = False
+            merged.append(ExtractedAttribute(raw_name=raw_name, label=label, is_null=is_null))
+
+    return merged + extras
 
 
 def _append_generated_query(
@@ -305,6 +385,7 @@ def run_enrichment(
     max_attributes: Optional[int] = DEMO_MAX_ATTRIBUTES,
     persist_queries: bool = False,
     queries_path: Optional[str] = None,
+    guaranteed_core: bool = False,
 ) -> Iterator[Dict[str, Any]]:
     """Embed the PDF, generate a query per record field, answer/validate each,
     and stream events; fills null fields and overwrites prefilled fields on a
@@ -329,6 +410,10 @@ def run_enrichment(
     cfg = ENGINE.make_config(overrides)
     record_data = rag_evaluation._data_root(record)
     attrs: List[ExtractedAttribute] = extract_attributes(record)
+    if guaranteed_core:
+        # Always include the top-12 core attributes (injecting canonical-keyed
+        # placeholders for any not present in the uploaded record).
+        attrs = _merge_core_attributes(attrs, queries_path, record_data)
     total_attrs = len(attrs)
     if max_attributes is not None and max_attributes > 0:
         attrs = attrs[:max_attributes]
@@ -426,6 +511,21 @@ def run_enrichment(
                 record_data.get(raw_name)
             )
             existing_value = record_data.get(raw_name)
+
+            # Known OSDU labels (facility name, spud/completion date, basin name,
+            # lat+long, total depth, ...) store their ground truth in nested or
+            # object-typed fields (FacilityEvents[], GeoContexts[],
+            # VerticalMeasurements[], Wgs84Coordinates geometry), so the raw
+            # top-level value is often absent or an object that renders as
+            # "[object Object]". Always prefer the RAG pipeline's extractor here so
+            # these core attributes are shown + validated exactly as the pipeline
+            # sees them (clean coordinate/date/name strings).
+            gt_key = (label or "").strip().lower()
+            if gt_key in rag_evaluation.GROUND_TRUTH_EXTRACTORS:
+                resolved = rag_evaluation.extract_ground_truth(label, record)
+                if resolved.get("value") is not None:
+                    existing_value = resolved.get("value")
+                    was_null = False
 
             question = rag_evaluation.inject_name(query, well_name) if well_name else query
             retrieval_query = f"{question} {keywords}".strip() if keywords else question
