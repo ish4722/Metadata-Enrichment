@@ -139,6 +139,7 @@ OSDU_FIELD_TO_LABEL: Dict[str, str] = {
     "operatingenvironmentid": "openv ID",
     "wellboresituation": "openv ID",
     "spatiallocation.wgs84coordinates": "lat+long",
+    "virtualproperties.defaultlocation.wgs84coordinates": "lat+long",
     "countryname": "country name",
     "defaultverticalmeasurementid": "default vertical measurement ID",
     "currentoperatorid": "current operator ID",

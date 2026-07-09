@@ -1,0 +1,23 @@
+{
+  "data": {
+    "FacilityName": "SDC-3",
+    "SpatialLocation.Wgs84Coordinates": "-45.9492179, 167.9900891",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2005-10-26",
+    "CountryName": "New Zealand",
+    "GeoContexts.BasinID": "Ohai Basin",
+    "FieldName": "Ohai Basin",
+    "DefaultVerticalMeasurementID": "KB",
+    "CurrentOperator": "L&M Petroleum",
+    "MarkerNames": null,
+    "VerticalMeasurements.TotalDepthMD": "71.3 m",
+    "FacilityEvents.CompletionDate": "2005-10-31",
+    "WellboreTrajectoryType": "Vertical/straight hol",
+    "VirtualProperties.DefaultName": "SDC-3",
+    "RegionName": "Ohai Basin, Southland (PEP 38220)",
+    "SpatialLocation.SpatialGeometryTypeID": "Point",
+    "WellboreClassification": "Exploration well",
+    "WellboreHydrocarbonType": "No gas detected",
+    "BlockName": "38220"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "data": {
+    "FacilityName": "Ahuroa South B-1 ST1",
+    "SpatialLocation.Wgs84Coordinates": "-39.2652419, 174.3405856",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2005-11-11",
+    "CountryName": "New Zealand",
+    "GeoContexts.BasinID": "TARANAKI BASIN",
+    "FieldName": " Ahuroa Field.",
+    "DefaultVerticalMeasurementID": "KB",
+    "CurrentOperator": "SWIFT ENERGY NEW ZEALAND LTD",
+    "MarkerNames": "Otaraoa, Tariki Sandstone, McKee, Mangahewa, Manganui",
+    "VerticalMeasurements.TotalDepthMD": "3085 m",
+    "FacilityEvents.CompletionDate": "2005-11-28",
+    "VirtualProperties.DefaultLocation.QuantitativeAccuracyBandID": "The well’s stated surface location positional uncertainty is 0.00 m (Position Uncertainty: 0.00 m).",
+    "VirtualProperties.DefaultName": "Ahuroa South B-1 ST1",
+    "RegionName": " Taranaki",
+    "ProspectName": "Ahuroa South prospect.",
+    "ExistenceKind": "ACTUAL",
+    "BusinessIntentionID": "The well is associated with permit PEP 38719."
+  }
+}

@@ -90,6 +90,42 @@ python -m benchmarking.benchmark_llms --no-preflight
 Output: `output_table/benchmarking/llms/` (`summary_<model>.json`,
 `comparison.json`, `report.md`).
 
+## Enriched gold-set benchmarks (no MTEB retrieval metrics)
+
+The same four tasks can be scored against the human-verified
+`enriched_ground_truth/` files instead of the OSDU `matched_json/` records. Each
+enriched file holds only the attributes a reviewer verified for that document, so
+these runs query just those attributes (per document) and read ground truth
+straight from the flat enriched record. MTEB retrieval ranking metrics (MRR,
+nDCG@k, Hit@k, ...) are **not** computed here — accuracy is purely end-to-end
+(LLM-judge / token / retrieval hit), so no `retrieval_goldset.json` is required.
+
+Shared utilities live in `enriched_dataset.py` (discovery, per-doc query
+filtering, the enriched ground-truth extractor and a run manifest). The
+`BatchRunner` accepts a `gt_extractor` hook so the same engine drives both gold
+standards.
+
+```bash
+# Full suite: embeddings -> matryoshka + reranker -> llms
+python -m benchmarking.benchmark_enriched
+
+# Individual tasks
+python -m benchmarking.benchmark_enriched_embeddings --only PR3403 PR3693
+python -m benchmarking.benchmark_enriched_matryoshka --dims 512 1024
+python -m benchmarking.benchmark_enriched_reranker --models openai_large
+python -m benchmarking.benchmark_enriched_llms --model openai_large
+
+# Suite subsets
+python -m benchmarking.benchmark_enriched --embeddings-only
+python -m benchmarking.benchmark_enriched --reranker-only --models openai_large
+```
+
+The reranker and LLM tasks auto-pick their embedding config from the enriched
+Task-1 `comparison.json`, so run the embedding benchmark first (the orchestrator
+does this automatically). Output: `output_table/benchmarking_enriched/`
+(`manifest.json`, plus `embeddings/`, `matryoshka/`, `reranker/`, `llms/`
+subfolders mirroring the standard reports).
+
 ## Turning reports into Word
 
 ```bash

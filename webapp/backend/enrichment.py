@@ -28,7 +28,7 @@ from engine import ENGINE, _chunk_payload
 from highlights import highlights_for_matches
 from rag.inference.context_builder import build_context
 from rag.inference.hierarchical_answer import answer_with_hierarchical_context
-from rag.inference.prompt import make_prompt, parse_generator_json
+from rag.inference.prompt import inject_facility_name, make_prompt, parse_generator_json
 from rag.inference.reranker import get_reranker, rerank
 
 # The query-generation package uses top-level ``from query_generation...`` imports,
@@ -320,6 +320,26 @@ def _append_generated_query(
             pass
 
 
+# ── name injection (generation only; retrieval stays generic) ─────────────────
+def _generation_question(query: str, label: str, well_name: Optional[str]) -> str:
+    """Name-injected question for the LLM answer step (retrieval stays generic).
+
+    The well/facility name is injected into the generation question so the LLM
+    answers about the specific well, EXCEPT for the ``facility name`` attribute
+    itself (injecting the name there would give away the answer). Retrieval uses
+    the raw, name-free query so the search stays about "this well" in general.
+    """
+    name = well_name if well_name and well_name.strip().lower() != "the well" else ""
+    if (label or "").strip().lower() == "facility name":
+        name = ""
+    if not name:
+        return query
+    # Replace explicit placeholders ({well} / [facility name]) then the generic
+    # "this well" / "the well" subject with the concrete name.
+    q = rag_evaluation.inject_name(query, name)
+    return inject_facility_name(q, name)
+
+
 # ── query generation (one retrieval query per record field) ───────────────────
 def _generate_query(llm: Any, attribute: str) -> Tuple[str, str, Dict[str, Any]]:
     """Generate a retrieval query + keywords for one attribute via the LLM.
@@ -373,6 +393,33 @@ def _empty_summary() -> Dict[str, int]:
 def _is_empty(value: Any) -> bool:
     """A record field counts as null/empty when it is None or an empty container."""
     return value is None or (isinstance(value, (list, dict, str)) and len(value) == 0)
+
+
+# Numeric vertical-measurement labels whose ground truth is a bare number: we
+# append the record's unit of measure so a reviewer knows the GT unit (e.g. "m")
+# when the document may report the value in a different unit (e.g. ft).
+_VM_UNIT_MATCHERS = {
+    "vertical measurement total depth": "_is_total_depth_md_measurement",
+    "verticalmeasurementid kb": "_is_kb_vertical_measurement",
+}
+
+
+def _vm_unit_for_label(label: str, record_data: Dict[str, Any]) -> Optional[str]:
+    """Return the unit of measure for a vertical-measurement label, or ``None``."""
+    matcher_name = _VM_UNIT_MATCHERS.get((label or "").strip().lower())
+    matcher = getattr(rag_evaluation, matcher_name, None) if matcher_name else None
+    if matcher is None:
+        return None
+    try:
+        for vm in rag_evaluation._vertical_measurements(record_data):
+            if matcher(vm):
+                unit = rag_evaluation._strip_reference_id(
+                    vm.get("VerticalMeasurementUnitOfMeasureID")
+                )
+                return unit or None
+    except Exception:  # noqa: BLE001
+        return None
+    return None
 
 
 # ── main streamed operation ───────────────────────────────────────────────────
@@ -526,9 +573,23 @@ def run_enrichment(
                 if resolved.get("value") is not None:
                     existing_value = resolved.get("value")
                     was_null = False
+                    # Append the unit of measure to numeric vertical-measurement GTs
+                    # (ground-truth tool only) so the reviewer knows the GT unit;
+                    # validation below still compares against the raw number.
+                    if guaranteed_core:
+                        unit = _vm_unit_for_label(label, record_data)
+                        if unit and unit.lower() not in str(existing_value).lower():
+                            existing_value = f"{existing_value} {unit}"
 
-            question = rag_evaluation.inject_name(query, well_name) if well_name else query
-            retrieval_query = f"{question} {keywords}".strip() if keywords else question
+            # Ground-truth tool: retrieval stays generic ("this well"); the well
+            # name is injected only into the generation question. The regular
+            # enrichment tool keeps its original placeholder-based behavior.
+            if guaranteed_core:
+                retrieval_query = f"{query} {keywords}".strip() if keywords else query
+                question = _generation_question(query, label, well_name)
+            else:
+                question = rag_evaluation.inject_name(query, well_name) if well_name else query
+                retrieval_query = f"{question} {keywords}".strip() if keywords else question
 
             with _RETRIEVE_LOCK:
                 matches = ENGINE._retrieve(store, cfg, doc_id, retrieval_query)
@@ -650,7 +711,10 @@ def run_enrichment(
         # Announce every attribute up front so the table populates immediately,
         # then fan the answering out across the pool.
         for idx, (attr, query, keywords) in enumerate(specs):
-            question = rag_evaluation.inject_name(query, well_name) if well_name else query
+            if guaranteed_core:
+                question = _generation_question(query, attr.label, well_name)
+            else:
+                question = rag_evaluation.inject_name(query, well_name) if well_name else query
             yield {"stage": "attribute", "status": "start", "index": idx,
                    "label": attr.label, "raw_name": attr.raw_name, "question": question}
 

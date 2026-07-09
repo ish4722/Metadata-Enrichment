@@ -62,7 +62,11 @@ SYSTEM_PREAMBLE = (
     "latitude and longitude - converting to decimal degrees when possible and "
     "naming the datum - instead of saying WGS84 coordinates are unavailable. "
     "These datums are effectively interchangeable for locating the well. Only set "
-    '"available" to false for location if NO coordinates of any kind are present.\n\n'
+    '"available" to false for location if NO coordinates of any kind are present.\n'
+    "For questions about markers, marker names, or formation tops: return ONLY the "
+    "marker / formation names themselves as a concise comma-separated list. Do NOT "
+    "return full sentences, paragraphs, descriptions, depths, or any surrounding "
+    'explanation - just the names (e.g. "Manutahi, Mangahewa, Kapuni").\n\n'
     "Respond with ONLY a valid JSON object (no markdown fences, no extra text) "
     "using this schema:\n"
     "{\n"

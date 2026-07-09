@@ -1,0 +1,22 @@
+{
+  "data": {
+    "FacilityName": "Goldie-2 ST1",
+    "SpatialLocation.Wgs84Coordinates": "-39.1849272, 174.1689056",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2006-04-03",
+    "CountryName": "New Zealand",
+    "GeoContexts.BasinID": "TARANAKI BASIN",
+    "FieldName": "Goldie",
+    "CurrentOperator": "GREYMOUTH PETROLEUM LTD",
+    "MarkerNames": "Matemateaonga, Urenui, Mt Messenger (Base Lepperton Canyon), MM110 Sand, MM95 Sand, G1-15/9 (reservoir)",
+    "VerticalMeasurements.TotalDepthMD": "1822 m",
+    "FacilityEvents.CompletionDate": "2006-04-09",
+    "WellborePhase": "Drilling phase",
+    "WellboreTrajectoryType": "Directional/deviated sidetrack wellbore: vertical to ~750 m then builds angle to ~40° by ~1150 m and holds ~40° inclination to TD (tangent/hold section; not horizontal).",
+    "VirtualProperties.DefaultName": "Goldie-2 ST1",
+    "RegionName": "Onshore Taranaki, New Zealand",
+    "ExistenceKind": "Actual",
+    "WellboreClassification": "Appraisal sidetrack well",
+    "FormationNameAtTotalDepth": "Mount Messenger Formation"
+  }
+}

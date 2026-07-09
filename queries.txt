@@ -1,5 +1,5 @@
 facility name:
-What is the well name?
+What is the well or the wellbore name?
 
 lat+long:
 What is the geographic location(latitude and longitude) of this well based on its WGS84 coordinates?
@@ -58,7 +58,7 @@ What is the company role identifier (Role ID) for the well—e.g., the operator/
 Keywords: operator, licensee, permit holder, permit operator, company, parties, participants, participant ID, party ID, organization, responsible company, well owner, joint venture, JV, working interest, contractor, drilling contractor, rig contractor, service company, vendor, contacts
 
 WellborePhase*:
-What wellbore phase is described for this well (e.g., surface/intermediate/production hole section, pilot hole, or sidetrack/re-entry phase)?
+What wellbore phase is described for this well (e.g., explore or drilling phase)?
 
 Keywords: phase, drilling phase, well phase, hole section, section, hole interval, hole size, open hole, casing section, casing program, conductor, surface hole, intermediate hole, production hole, pilot hole, sidetrack, ST, re-entry, completion, workover, P&A, plug and abandon, abandonment
 
@@ -118,7 +118,7 @@ What coordinate system / spatial reference (e.g., NZTM/NZMG or latitude–longit
 Keywords: CRS, coordinate reference system, spatial reference system, map projection, projection, grid system, grid reference, easting, northing, NZTM2000, NZTM, NZMG, WGS84, GDA94, EPSG, UTM, zone, geodetic datum, datum, ellipsoid, latitude, longitude, geographic coordinates
 
 ExistenceKind*:
-What is the well/wellbore status or existence type (e.g., actual/as-drilled vs planned/proposed; drilled, suspended, shut-in, abandoned/P&A) stated in this report?
+What is the well/wellbore status or existence type (e.g., actual/as-drilled vs planned/proposed) stated in this report?
 
 Keywords: well status, wellbore status, current status, actual, as drilled, as-drilled, planned, proposed, permit, to be drilled, cancelled, not drilled, existing, active, suspended, shut in, shut-in, abandoned, plugged and abandoned, P&A, TA, temporarily abandoned, dry hole, D&A, decommissioned
 

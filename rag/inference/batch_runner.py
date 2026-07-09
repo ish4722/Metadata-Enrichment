@@ -51,7 +51,7 @@ from rag.indexing.chroma_store import (  # noqa: E402
 from rag.inference.context_builder import build_context  # noqa: E402
 from rag.inference.hierarchical_answer import answer_with_hierarchical_context  # noqa: E402
 from rag.inference.llm import get_llm  # noqa: E402
-from rag.inference.prompt import make_prompt  # noqa: E402
+from rag.inference.prompt import inject_facility_name, make_prompt  # noqa: E402
 from rag.inference.reranker import get_reranker, rerank  # noqa: E402
 
 import evaluate_all  # noqa: E402  (reuse doc discovery)
@@ -110,13 +110,18 @@ class QueryResult:
 
 
 class BatchRunner:
-    def __init__(self, config: RagConfig, use_judge: bool = True, inject_name: bool = True):
+    def __init__(self, config: RagConfig, use_judge: bool = True, inject_name: bool = True,
+                 gt_extractor=None):
         self.config = config
         self.use_judge = use_judge
         # When True, name placeholders ("{well}") in queries are filled with the
         # document's ground-truth well name; when False they collapse to "the well"
         # (the no-name phrasing) so the same queries.txt drives both experiment arms.
         self.inject_name = inject_name
+        # Resolves the ground-truth value/tokens for a (label, record) pair. Defaults
+        # to the OSDU ``matched_json`` extractor; the enriched benchmarks pass a
+        # resolver that reads the flat enriched gold set instead.
+        self.gt_extractor = gt_extractor or rag_evaluation.extract_ground_truth
         self._rerank_lock = threading.Lock()  # cross-encoder is not thread-safe
         # Embedding-cost accounting for this run (only the OpenAI backend is paid;
         # local backends embed for free).
@@ -253,16 +258,37 @@ class BatchRunner:
         return qr
 
     # ── judge phase ───────────────────────────────────────────────────────────
+    @staticmethod
+    def _is_marker_label(label: Optional[str]) -> bool:
+        """True for the marker-names label (tolerating ``*`` / numeric variants)."""
+        key = (label or "").strip().lower()
+        while key and key[-1] in "*0123456789":
+            key = key[:-1]
+        return key.strip() == "marker names"
+
+    def _apply_marker_leniency(self, qr: QueryResult) -> QueryResult:
+        """Be lenient on marker names: a partial token match (>= 1 marker name
+        present in the answer) counts as correct for the headline metric, since
+        listing every marker is unrealistic. Only upgrades ``llm_hit``."""
+        if qr.llm_hit or not self._is_marker_label(qr.label) or not qr.gt_tokens or not qr.answer:
+            return qr
+        answer_norm = rag_evaluation._normalize_for_match(
+            rag_evaluation.answer_text_for_scoring(qr.answer)
+        )
+        if any(rag_evaluation._normalize_for_match(t) in answer_norm for t in qr.gt_tokens if t):
+            qr.llm_hit = True
+        return qr
+
     def _judge_one(self, qr: QueryResult) -> QueryResult:
         if not self.use_judge or not qr.answer or qr.ground_truth in (None, ""):
             qr.llm_hit = qr.token_match
-            return qr
+            return self._apply_marker_leniency(qr)
         # Coordinate labels use the deterministic comparator (no LLM needed);
         # other labels need the LLM judge, so skip if it is unavailable.
         is_coord = rag_evaluation.label_uses_coordinate_judge(qr.label)
         if not is_coord and self.llm is None:
             qr.llm_hit = qr.token_match
-            return qr
+            return self._apply_marker_leniency(qr)
         t0 = time.perf_counter()
         is_match, usage = rag_evaluation.judge_match_dispatch(
             self.llm, qr.label, qr.question, str(qr.ground_truth), qr.answer
@@ -270,8 +296,32 @@ class BatchRunner:
         qr.judge_match = is_match
         qr.judge_usage = usage
         qr.judge_time_s = time.perf_counter() - t0
-        qr.llm_hit = is_match
-        return qr
+        # A positive deterministic token match (every ground-truth token present in
+        # the answer) always counts as correct for the headline metric, even if the
+        # judge says no - this absorbs judge false-negatives where the answer clearly
+        # contains the expected value with extra qualifiers (e.g. GT "Taranaki",
+        # answer "Taranaki Basin").
+        qr.llm_hit = bool(is_match or qr.token_match)
+        return self._apply_marker_leniency(qr)
+
+    # ── name injection (generation only; retrieval stays generic) ──────────────
+    @staticmethod
+    def _generation_question(query: str, label: str, well_name: str) -> str:
+        """Name-injected question for generation (retrieval stays generic).
+
+        Mirrors the RAG enrichment pipeline (``webapp/backend/enrichment.py``):
+        the well/facility name is injected into the generation question so the LLM
+        answers about the specific well, EXCEPT for the ``facility name`` attribute
+        itself (injecting it there would give away the answer). A falsy or
+        "the well" name leaves the question generic.
+        """
+        name = well_name if well_name and well_name.strip().lower() != "the well" else ""
+        if (label or "").strip().lower() == "facility name":
+            name = ""
+        if not name:
+            return query
+        q = rag_evaluation.inject_name(query, name)
+        return inject_facility_name(q, name)
 
     # ── orchestration ─────────────────────────────────────────────────────────
     def run(self, docs: List[Dict[str, str]], queries: List[Dict[str, str]]) -> List[QueryResult]:
@@ -282,13 +332,17 @@ class BatchRunner:
                 matched = json.load(f)
             # Resolve this doc's well name (ground truth) for the inject arm; the
             # no-inject arm uses the neutral "the well" so {well} -> "the well".
-            well_name = rag_evaluation.resolve_well_name(matched) if self.inject_name else "the well"
-            for q in queries:
-                gt = rag_evaluation.extract_ground_truth(q["label"], matched)
-                question = rag_evaluation.inject_name(q["question"], well_name)
-                retrieval_query = rag_evaluation.inject_name(
-                    q.get("retrieval_query") or q["question"], well_name
-                )
+            well_name = rag_evaluation.resolve_well_name(matched) if self.inject_name else ""
+            # A doc may carry its own filtered query list (enriched benchmarks only
+            # ask the attributes the gold record populated); otherwise use the shared set.
+            doc_queries = doc.get("queries") or queries
+            for q in doc_queries:
+                gt = self.gt_extractor(q["label"], matched)
+                # Retrieval stays generic (name-free) so search is about "this well"
+                # in general; the well name is injected only into the generation
+                # question, matching the RAG enrichment pipeline.
+                retrieval_query = q.get("retrieval_query") or q["question"]
+                question = self._generation_question(q["question"], q["label"], well_name)
                 tasks.append(QueryResult(
                     doc_id=doc["id"], label=q["label"], question=question,
                     retrieval_query=retrieval_query,

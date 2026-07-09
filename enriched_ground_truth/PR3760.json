@@ -1,0 +1,24 @@
+{
+  "data": {
+    "FacilityName": "Moturoa-7 ST1",
+    "SpatialLocation.Wgs84Coordinates": "-39.0596018, 174.0436014",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2007-09-07",
+    "CountryName": "New Zealand",
+    "GeoContexts.BasinID": "TARANAKI BASIN",
+    "FieldName": "Moturoa",
+    "DefaultVerticalMeasurementID": "RKB",
+    "CurrentOperator": "GREYMOUTH PETROLEUM LTD",
+    "MarkerNames": "Matemateaonga, Blyde, Lower Republic, Upper Republic, Blenheim, Moturoa Mudstone",
+    "VerticalMeasurements.TotalDepthMD": "1592 m",
+    "FacilityEvents.CompletionDate": "2007-09-19",
+    "VirtualProperties.DefaultLocation.QuantitativeAccuracyBandID": "Position Uncertainty: 0.00 m",
+    "WellboreClassification": "Moturoa-7: deviated pilot hole drilled to appraise/determine top Blenheim sand depth and potential; Moturoa-7 ST1: horizontal appraisal sidetrack well.",
+    "ResourceLifecycleStatus": "Completed",
+    "FormationNameAtTotalDepth": "Matemateaonga Formation",
+    "TargetFormation": "Blenheim sands",
+    "WellboreStatus": "Completed",
+    "KickOffWellbore": "Moturoa-7 wellbore",
+    "BlockName": "38464"
+  }
+}

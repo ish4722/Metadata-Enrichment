@@ -1,0 +1,23 @@
+{
+  "data": {
+    "FacilityName": "Warea-1",
+    "SpatialLocation.Wgs84Coordinates": "-39.2221806,174.7822389",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2000-11-05",
+    "CountryName": "New Zealand",
+    "GeoContexts.BasinID": "TARANAKI BASIN",
+    "FieldName": "Taranaki",
+    "DefaultVerticalMeasurementID": "KB",
+    "CurrentOperator": "DISCOVERY GEO(AUSTRALIA) CORPORATION",
+    "MarkerNames": "Well formation/marker names and stratigraphy levels (with tops and lithology/stratigraphic units) reported in the excerpts:\n- Egmont Volcanics (Pleistocene): 14–308 ft AHBKB; lithology: andesitic laharic/pyroclastic/alluvial volcanoclastics; fine–very coarse sand-sized lapilli tuff with minor scoria; basal 281–308 ft interbedded volcanoclastics and shelly marine sediments. Formation top also reported at ~305 ft TVD (daily drilling report) and at surface (m RKB, re-entry report).\n- Rotokare/Whenuakura Subgroup (Late Pliocene): 308–3360 ft AHBKB. Formation top reported as Whenuakura at 299 m RKB; lithology: sandstone, siltstone.\n- Tangahoe (Mid Pliocene): 3360–4326 ft AHBKB. Formation top reported at 3314 ft TVD (daily drilling report) / 3378 m RKB (re-entry report); lithology: muddy siltstone.\n- Mateamateaonga (Late Miocene–Pliocene): 4326–6900 ft AHBKB. Formation top reported at 4288 ft TVD / 4344 m RKB; lithology: sandstone, siltstone.\n- Wai-iti / Urenui (Late Miocene): 6900–7618 ft AHBKB. Formation top reported at 6873 ft TVD / 6918 m RKB; lithology: siltstone.\n- Unknown Volcanic Succession (Mid Miocene?): Warea-1 7618–9518 ft AHBKB; Warea Deep-1 8400–11077 ft AHBKB. Re-entry report additionally lists 'Meta-sediments' at 7308 m RKB with lithology 'meta-sediments'.\nAdditional formation markers/tops listed in the daily drilling reports (no lithology given in excerpts): Mount Messenger (top 10098 ft TVD), Moki (top 11581 ft TVD), Kapuni (top 13386 ft TVD).",
+    "VerticalMeasurements.TotalDepthMD": "2900.94 m",
+    "FacilityEvents.CompletionDate": "2000-12-10",
+    "WellborePhase": "Explore",
+    "WellboreTrajectoryType": "Warea-1 was drilled as a vertical hole (straight hole), though deviations up to 15° at 2232 ft were measured. Warea Deep-1 kicked off at the casing shoe (~2236–2240 ft) and drilled a new, deviated wellbore to TD.",
+    "VirtualProperties.DefaultName": "WAREA-1 / WAREA DEEP-1",
+    "RegionName": " Taranaki",
+    "FacilityTypeID": "Exploration well.",
+    "WellboreStatus": "The well status is \"Temporarily abandoned\" (as at 4 December 2001).",
+    "BlockName": "38722"
+  }
+}

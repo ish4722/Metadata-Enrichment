@@ -206,6 +206,8 @@ export default function GroundTruth({ onHome }) {
   const [saveMsg, setSaveMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const verifyRef = useRef(null);
+
   const selectedDoc = documents.find((d) => d.id === selectedDocId);
 
   // A core attribute is one whose (normalized) label is a hand-written query.
@@ -236,6 +238,13 @@ export default function GroundTruth({ onHome }) {
       }
     })();
   }, [loaded]);
+
+  // When a row's Verify is clicked, bring the verification panel into view.
+  useEffect(() => {
+    if (selectedLabel && verifyRef.current) {
+      verifyRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedLabel]);
 
   function clearStructured() {
     setStructured(null);
@@ -518,6 +527,18 @@ export default function GroundTruth({ onHome }) {
     setCorrections((prev) => ({ ...prev, [label]: value }));
   }
 
+  // The page(s) the answer was taken from: prefer the LLM-cited source pages;
+  // otherwise fall back to the page(s) of the top retrieved chunk.
+  function answerPages(attr) {
+    if (attr.source_pages && attr.source_pages.length) return attr.source_pages;
+    const top = (attr.chunks || [])[0];
+    if (top) {
+      if (Array.isArray(top.pages) && top.pages.length) return top.pages;
+      if (top.page != null) return [top.page];
+    }
+    return [];
+  }
+
   // Resolve the value that should be saved for one attribute: the typed
   // correction wins; else the model answer when marked correct; else the
   // original structured value (null when it was null).
@@ -529,15 +550,23 @@ export default function GroundTruth({ onHome }) {
     return attr.original_value ?? null;
   }
 
-  // The attributes that make it into the enhanced ground truth: every core
-  // attribute, plus any attribute the human explicitly verified as correct.
+  // The attributes that make it into the enhanced ground truth:
+  //  - every core attribute (always), plus any non-core attribute that has an
+  //    established ground-truth outcome:
+  //  - auto-validated (our answer matched the structured ground truth), or
+  //  - the human verified it (correct -> our value; incorrect -> keep the
+  //    original ground truth).
+  function includeInSave(a) {
+    if (a.status !== "done" || !a.raw_name) return false;
+    if (isCore(a.label)) return true;
+    const verdict = humanVerdicts[a.label];
+    if (verdict === "correct" || verdict === "incorrect") return true;
+    if (a.category === "validated_correct") return true;
+    return false;
+  }
+
   function selectedForSave() {
-    return attributes.filter(
-      (a) =>
-        a.status === "done" &&
-        a.raw_name &&
-        (isCore(a.label) || humanVerdicts[a.label] === "correct")
-    );
+    return attributes.filter(includeInSave);
   }
 
   function buildData() {
@@ -726,8 +755,9 @@ export default function GroundTruth({ onHome }) {
             <div className="panel">
               <div className="panel-title">Save ground truth</div>
               <div className="hint subtle" style={{ marginBottom: 8 }}>
-                {savedCount} attributes will be saved (all core attributes + any you
-                verified as correct).
+                {savedCount} attributes will be saved (all core attributes, plus
+                any non-core field that was auto-validated or that you verified —
+                correct keeps our value, incorrect keeps the original ground truth).
               </div>
               <button
                 type="button"
@@ -839,6 +869,11 @@ export default function GroundTruth({ onHome }) {
                             {a.status === "done" && a.has_gt && (
                               <div className="attr-gt subtle">structured: {String(a.ground_truth)}</div>
                             )}
+                            {a.status === "done" && a.available && answerPages(a).length > 0 && (
+                              <div className="attr-src subtle">
+                                source: p. {answerPages(a).join(", ")}
+                              </div>
+                            )}
                           </td>
                           <td className="attr-conf">
                             {a.status === "done" ? <ConfidenceBar value={a.confidence} /> : null}
@@ -873,7 +908,7 @@ export default function GroundTruth({ onHome }) {
               </section>
 
               {selectedAttr && (
-                <section className="card hitl-card">
+                <section className="card hitl-card" ref={verifyRef}>
                   <div className="section-head">
                     Verify: <strong>{selectedAttr.label}</strong>
                     {isCore(selectedAttr.label) && <span className="pill info gt-core-pill">core</span>}
@@ -885,6 +920,11 @@ export default function GroundTruth({ onHome }) {
                     </div>
                     {selectedAttr.has_gt && (
                       <div className="subtle">Structured value: {String(selectedAttr.ground_truth)}</div>
+                    )}
+                    {answerPages(selectedAttr).length > 0 && (
+                      <div className="subtle">
+                        Source page(s): {answerPages(selectedAttr).join(", ")}
+                      </div>
                     )}
                     <div className="hitl-verdict">
                       <button

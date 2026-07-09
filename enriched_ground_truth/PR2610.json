@@ -1,48 +1,26 @@
 {
   "data": {
-    "MarkerNames": [
-      "Wairoa",
-      "Tahaenui Limestone",
-      "Whakapunake Limestone",
-      "Opoiti",
-      "Poha",
-      "Makareao Sandstone",
-      "Pindari Mudstone",
-      "Kiakia Limestone",
-      "Tangihau-Waingaromia Mudstone",
-      "Rere Sandstone",
-      "Kauhauroa Limestone",
-      "Wheao",
-      "Whangara Sandstone",
-      "Weber"
-    ],
-    "DefaultVerticalMeasurementID": "RT",
-    "WellboreSituation": "Onshore",
     "FacilityName": "Kauhauroa-4B",
-    "WellboreTrajectoryType": " vertical well",
-    "CurrentOperator": "WESTECH ENERGY NEW ZEALAND LTD",
-    "RegionName": " Hawkes Bay",
-    "ProspectName": "Kauhauroa prospect",
-    "ExistenceKind": "Actual",
-    "VirtualProperties.DefaultLocation.IsDecimated": false,
-    "SpatialLocation.SpatialGeometryTypeID": "Point",
+    "SpatialLocation.Wgs84Coordinates": "-38.9504758, 177.4484732",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2001-04-29",
     "CountryName": "New Zealand",
-    "SpatialLocation.Wgs84Coordinates": {
-      "type": "geometrycollection",
-      "geometries": [
-        {
-          "type": "point",
-          "coordinates": [
-            177.4484732,
-            -38.9504758
-          ]
-        }
-      ]
-    },
-    "FieldName": " Kauhauroa field",
-    "WasBusinessInterestFinancialNonOperated": "No. The report identifies Westech Energy New Zealand Ltd as the operator; it does not state the well interest is non-operated/non-operating (financial interest only).",
-    "BlockName": "Petroleum Exploration Permit (PEP) 38329.",
-    "WasBusinessInterestFinancialOperated": "Yes. The report states the operator (operator of record / financially responsible operator) is Westech Energy New Zealand Ltd (also referred to as Westech Energy New Zealand / Westech Energy NZ).",
-    "VirtualProperties.DefaultLocation.Wgs84Coordinates": " -38.952244, 177.448258"
+    "GeoContexts.BasinID": "EAST COAST BASIN",
+    "FieldName": "Kauhauroa field",
+    "DefaultVerticalMeasurementID": "RT",
+    "CurrentOperator": "WESTECH ENERGY NEW ZEALAND LTD",
+    "VerticalMeasurements.TotalDepthMD": "2045.2",
+    "FacilityEvents.CompletionDate": "2001-06-03",
+    "WellborePhase": "Explore",
+    "WellboreTrajectoryType": "Vertical (straight-hole) well; no directional drilling proposed.",
+    "VirtualProperties.DefaultName": "Kauhauroa-4B",
+    "RegionName": " Hawke Ba",
+    "ProspectName": "Kauhauroa prospect (Kauhauroa structure).",
+    "ExistenceKind": "Actual",
+    "SpatialLocation.SpatialGeometryTypeID": "Point",
+    "FormationNameAtTotalDepth": " Weber Formation",
+    "WellboreStatus": "The well was shut in for pressure build-up/monitoring (i.e., shut-in).",
+    "BlockName": "38329",
+    "WasBusinessInterestFinancialOperated": "Yes. The operator of record / financially responsible operator stated in the report is Westech Energy New Zealand Ltd (also referred to as Westech Energy NZ)."
   }
 }

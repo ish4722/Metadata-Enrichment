@@ -80,7 +80,7 @@ def build_config(model: str, dim: int) -> RagConfig:
     cfg.hybrid_alpha = 0.85
     cfg.use_reranker = True
     cfg.context_mode = "hierarchical"
-    cfg.hierarchical_max_depth = 5
+    cfg.hierarchical_max_depth = 3
     return cfg
 
 

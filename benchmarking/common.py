@@ -59,7 +59,7 @@ def build_config(
     retrieval_mode: str = "hybrid",
     hybrid_alpha: float = 0.85,
     context_mode: str = "hierarchical",
-    hierarchical_max_depth: int = 5,
+    hierarchical_max_depth: int = 3,
     chunk_strategy: str = "section",
 ) -> RagConfig:
     """A RagConfig with baseline pipeline settings locked; overrides applied.
@@ -149,9 +149,11 @@ def run_end_to_end(
     use_judge: bool = True,
     inject_name: bool = True,
     build: bool = True,
+    gt_extractor=None,
 ) -> Dict[str, Any]:
     """Build (reuse) + run + summarize one configuration end-to-end."""
-    runner = BatchRunner(cfg, use_judge=use_judge, inject_name=inject_name)
+    runner = BatchRunner(cfg, use_judge=use_judge, inject_name=inject_name,
+                         gt_extractor=gt_extractor)
     t_build = time.perf_counter()
     if build:
         runner.build_all(matched)

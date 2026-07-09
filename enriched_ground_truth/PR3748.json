@@ -1,0 +1,23 @@
+{
+  "data": {
+    "FacilityName": "Lockington-1",
+    "SpatialLocation.Wgs84Coordinates": "-46.295, 169.8968",
+    "WellboreSituation": "Onshore",
+    "FacilityEvents.SpudDate": "2007-09-14",
+    "CountryName": "New Zealand",
+    "GeoContexts.BasinID": "Kaitangata Coalfield",
+    "FieldName": null,
+    "DefaultVerticalMeasurementID": "KB",
+    "CurrentOperator": "L & M COAL SEAM GAS LIMITED",
+    "MarkerNames": null,
+    "VerticalMeasurements.TotalDepthMD": "255.60 m MD (TD)",
+    "FacilityEvents.CompletionDate": "2007-09-23",
+    "WellboreTrajectoryType": "Vertical",
+    "VirtualProperties.DefaultName": "Lockington-1",
+    "RegionName": "Kaitangata Sector of the Kaitangata Coalfield, South Otago",
+    "WellboreClassification": "Exploration well (coal seam gas exploration)",
+    "VirtualProperties.DefaultLocation.SpatialGeometryTypeID": "POINT",
+    "WellboreHydrocarbonType": "Gas",
+    "BlockName": "38219"
+  }
+}
