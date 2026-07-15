@@ -1,5 +1,6 @@
 :root {
   --bg: #0f1420;
+  --bg-glow: #1a2336;
   --panel: #161c2b;
   --panel-2: #1d2538;
   --border: #2a3450;
@@ -10,8 +11,31 @@
   --warn: #f4b740;
   --fail: #f06570;
   --pass: #36d399;
+  --topbar-bg: rgba(15, 20, 32, 0.85);
+  --inset: #0e1422;
+  --inset-2: #0a0f1a;
   --radius: 12px;
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+}
+
+/* Light theme: override the same tokens so every panel/text/border switches. */
+:root[data-theme="light"] {
+  --bg: #eef2f8;
+  --bg-glow: #dbe6f6;
+  --panel: #ffffff;
+  --panel-2: #f2f6fc;
+  --border: #d4ddec;
+  --text: #1a2233;
+  --muted: #5c6880;
+  --accent: #2f63e0;
+  --accent-2: #10a06b;
+  --warn: #b9790a;
+  --fail: #d5454f;
+  --pass: #10a06b;
+  --topbar-bg: rgba(255, 255, 255, 0.82);
+  --inset: #eef3fa;
+  --inset-2: #e2e9f4;
+  --shadow: 0 6px 20px rgba(20, 40, 80, 0.1);
 }
 
 * {
@@ -20,7 +44,7 @@
 
 body {
   margin: 0;
-  background: radial-gradient(1200px 800px at 80% -10%, #1a2336 0%, var(--bg) 55%);
+  background: radial-gradient(1200px 800px at 80% -10%, var(--bg-glow) 0%, var(--bg) 55%);
   color: var(--text);
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   font-size: 14px;
@@ -38,7 +62,7 @@ body {
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: rgba(15, 20, 32, 0.85);
+  background: var(--topbar-bg);
   backdrop-filter: blur(8px);
   z-index: 20;
 }
@@ -50,6 +74,34 @@ body {
 .subtle {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* Floating light/dark theme switch (always top-right, above all views). */
+.theme-toggle {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 100;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.08s ease,
+    border-color 0.15s ease;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.theme-toggle:active {
+  transform: scale(0.94);
 }
 
 .error-bar {
@@ -111,7 +163,7 @@ select,
 textarea,
 input[type="text"] {
   width: 100%;
-  background: #0e1422;
+  background: var(--inset);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -221,7 +273,7 @@ input[type="range"] {
 .query-preview {
   font-size: 13px;
   color: var(--text);
-  background: #0e1422;
+  background: var(--inset);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
@@ -234,7 +286,7 @@ input[type="range"] {
 }
 .seg button {
   flex: 1;
-  background: #0e1422;
+  background: var(--inset);
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -264,7 +316,7 @@ input[type="range"] {
 .slider {
   position: absolute;
   inset: 0;
-  background: #2a3450;
+  background: var(--border);
   border-radius: 20px;
   transition: 0.2s;
 }
@@ -309,7 +361,7 @@ input[type="range"] {
   height: 44px;
   border-radius: 50%;
   border: 2px solid var(--border);
-  background: #0e1422;
+  background: var(--inset);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -414,6 +466,9 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Allow this grid track to shrink; without it long content (chunk text,
+     retrieval queries) forces the column wider and stretches the whole page. */
+  min-width: 0;
 }
 .results {
   display: grid;
@@ -425,10 +480,12 @@ input[type="range"] {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 .results-right {
   position: sticky;
   top: 76px;
+  min-width: 0;
 }
 
 .build-progress {
@@ -511,7 +568,7 @@ input[type="range"] {
 .conf-bar {
   flex: 1;
   height: 8px;
-  background: #0e1422;
+  background: var(--inset);
   border: 1px solid var(--border);
   border-radius: 20px;
   overflow: hidden;
@@ -535,6 +592,160 @@ input[type="range"] {
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 2px 8px;
+}
+
+/* CoVe confidence band + per-check breakdown */
+.badge.conf-band-high {
+  font-size: 11px;
+  border-radius: 20px;
+  padding: 2px 8px;
+  background: rgba(54, 211, 153, 0.16);
+  color: var(--pass);
+}
+.badge.conf-band-medium {
+  font-size: 11px;
+  border-radius: 20px;
+  padding: 2px 8px;
+  background: rgba(244, 183, 64, 0.16);
+  color: #f4b740;
+}
+.badge.conf-band-low {
+  font-size: 11px;
+  border-radius: 20px;
+  padding: 2px 8px;
+  background: rgba(240, 101, 112, 0.16);
+  color: var(--fail);
+}
+.conf-checks {
+  margin-top: 10px;
+}
+.conf-checks > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.conf-check-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.conf-check {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--inset);
+}
+.conf-check-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.conf-check-rel {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.conf-check-q {
+  font-size: 13px;
+  color: var(--text);
+}
+.conf-check-rule,
+.conf-check-fact {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.conf-check.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.conf-check-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.conf-check-running .spin {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
+}
+
+/* Low-confidence suggestion box (accept / reject a correction) */
+.suggestion-box {
+  margin-top: 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(91, 140, 255, 0.08);
+}
+.suggestion-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.suggestion-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.suggestion-reason {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.suggestion-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.btn.sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Cost & tokens summary - compact golden box under Run query */
+.cost-panel {
+  margin-top: 10px;
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.cost-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #d4af37;
+  margin-bottom: 6px;
+}
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.cost-table thead {
+  display: none;
+}
+.cost-table td:last-child {
+  text-align: right;
+  color: #e6c866;
+  font-variant-numeric: tabular-nums;
+}
+.cost-table td {
+  padding: 2px 2px;
+  color: var(--muted);
+}
+.cost-table .cost-total td {
+  border-top: 1px solid rgba(212, 175, 55, 0.4);
+  padding-top: 5px;
+  font-weight: 700;
+  color: #d4af37;
 }
 
 .chunks {
@@ -563,7 +774,7 @@ input[type="range"] {
   border: 1px solid var(--border);
   border-radius: 9px;
   padding: 10px;
-  background: #0e1422;
+  background: var(--inset);
   cursor: pointer;
   transition: border-color 0.15s ease, transform 0.08s ease;
 }
@@ -590,6 +801,8 @@ input[type="range"] {
   color: var(--text);
   margin-bottom: 4px;
   font-weight: 500;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .chunk-text {
   font-size: 12px;
@@ -598,6 +811,8 @@ input[type="range"] {
   max-height: 110px;
   overflow: hidden;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* ── pdf viewer ── */
@@ -962,7 +1177,7 @@ input[type="range"] {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: #0e1422;
+  background: var(--inset);
   font-size: 13px;
 }
 .detail-queries ul {
@@ -979,7 +1194,7 @@ input[type="range"] {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: #0e1422;
+  background: var(--inset);
 }
 .loop-lane {
   display: flex;
@@ -1044,7 +1259,7 @@ input[type="range"] {
   margin-top: 12px;
   height: 8px;
   border-radius: 6px;
-  background: #0a0f1a;
+  background: var(--inset-2);
   border: 1px solid var(--border);
   overflow: hidden;
 }
@@ -1178,6 +1393,110 @@ input[type="range"] {
 .dash-card.muted .dash-value {
   color: var(--muted);
 }
+.dash-card.enriched::before {
+  background: var(--accent);
+}
+.dash-card.enriched .dash-value {
+  color: var(--accent);
+}
+
+/* human edit of a medium-confidence answer + inline tags */
+.hitl-edit {
+  margin-top: 10px;
+}
+.hitl-edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.hitl-edit-input {
+  flex: 1 1 220px;
+  min-width: 160px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel, rgba(255, 255, 255, 0.03));
+  color: var(--text);
+  font-size: 13px;
+}
+.hitl-edit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.tag-edited {
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tag-auto {
+  font-size: 10px;
+  color: var(--warn);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* per-query pipeline step visualisation (retrieve -> rerank -> llm -> cove) */
+.pipe-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+.pipe-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.pipe-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pipe-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pipe-step-body {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.pipe-q {
+  word-break: break-word;
+  margin-bottom: 6px;
+}
+.pipe-answer {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(91, 140, 255, 0.08);
+  border: 1px solid rgba(91, 140, 255, 0.25);
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pipe-chunks > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+.pipe-chunks[open] > summary {
+  margin-bottom: 6px;
+}
 
 /* attribute table */
 .attr-table {
@@ -1262,7 +1581,7 @@ input[type="range"] {
 .conf-bar {
   position: relative;
   height: 16px;
-  background: #0e1422;
+  background: var(--inset);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -1342,7 +1661,7 @@ input[type="range"] {
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #0e1422;
+  background: var(--inset);
   color: var(--text);
   font-size: 13px;
 }
@@ -1390,7 +1709,7 @@ input[type="range"] {
   padding: 8px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #0e1422;
+  background: var(--inset);
   color: var(--muted);
   cursor: pointer;
   font-weight: 600;

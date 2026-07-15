@@ -25,6 +25,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 PDF_DIR = os.path.join(REPO_ROOT, "pdfs")
 DATALAB_DIR = os.path.join(REPO_ROOT, "datalab-output")
 MATCHED_DIR = os.path.join(REPO_ROOT, "matched_json")
+# The Metadata Enrichment tool enriches the (possibly-incomplete) records in
+# ``new_checking_truth`` and validates them against the filled records in
+# ``enriched_ground_truth``.
+NEW_TRUTH_DIR = os.path.join(REPO_ROOT, "new_checking_truth")
+ENRICHED_GT_DIR = os.path.join(REPO_ROOT, "enriched_ground_truth")
 
 # Embedding models exposed in the UI (friendly aliases from the config).
 # "jina-api" = the remotely hosted jina-embeddings-v3 server (late chunking on).
@@ -61,6 +66,16 @@ def pdf_path(doc_id: str) -> Optional[str]:
 
 def matched_path(doc_id: str) -> Optional[str]:
     return _scan_ids(MATCHED_DIR, ".json").get(doc_id)
+
+
+def new_truth_path(doc_id: str) -> Optional[str]:
+    """The (incomplete) record to enrich, from ``new_checking_truth/<id>.json``."""
+    return _scan_ids(NEW_TRUTH_DIR, ".json").get(doc_id)
+
+
+def enriched_gt_path(doc_id: str) -> Optional[str]:
+    """The filled ground-truth record, from ``enriched_ground_truth/<id>.json``."""
+    return _scan_ids(ENRICHED_GT_DIR, ".json").get(doc_id)
 
 
 # ── built-model detection (cheap: no embedding model is loaded) ───────────────
@@ -102,6 +117,8 @@ def describe_document(doc_id: str, *, with_built: bool = True) -> Dict[str, Any]
         "has_pdf": pdf_path(doc_id) is not None,
         "has_datalab": datalab_path(doc_id) is not None,
         "has_matched": matched_path(doc_id) is not None,
+        "has_source": new_truth_path(doc_id) is not None,
+        "has_ground_truth": enriched_gt_path(doc_id) is not None,
         "built_models": built_models(doc_id) if with_built else [],
     }
 

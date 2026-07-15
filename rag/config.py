@@ -66,7 +66,7 @@ class RagConfig:
     embedding_model: str = "openai"
     # OpenAI-compatible embeddings (SLB internal deployment). base_url defaults
     # to llm_base_url when left as None.
-    openai_embedding_model: str = "text-embedding-3-large"
+    openai_embedding_model: str = "text-embedding-3-small"
     openai_embedding_base_url: Optional[str] = "https://datascience-services.app.weu-d1.delfi.slb-ds.com/ds/modelops/deployments/v1"
     openai_embedding_partition_id: Optional[str] = "sandbox-weu-des-prod-testing-e"
     # Truncated (Matryoshka) output dimension for OpenAI embeddings. None = the
@@ -118,13 +118,13 @@ class RagConfig:
     # "hierarchical" - start from the matched chunks and add ancestor sections on
     #                  demand, re-prompting until the LLM can answer (see
     #                  rag.inference.hierarchical_answer).
-    context_mode: str = "full_page"       # "chunk" | "full_page" | "hierarchical"
+    context_mode: str = "hierarchical"       # "chunk" | "full_page" | "hierarchical"
     # Max number of ancestor levels to climb in hierarchical mode.
     hierarchical_max_depth: int = 3
     save_pages_sent_to_llm: bool = False
 
     # ── LLM  ← SWAP LLM HERE ────────────────────────────────────────────────
-    llm_model: str = "gpt-5.2"
+    llm_model: str = "gpt-5-mini"
     # Sampling temperature for generation + judge. 0.0 = deterministic (recommended
     # for reproducible evaluation). Set to None to omit it (some reasoning models
     # only accept the default); the client falls back automatically if rejected.
@@ -136,6 +136,21 @@ class RagConfig:
 
     # Optional local model folder for Jina (auto-detected if None)
     model_path: Optional[str] = None
+
+    # ── CoVe confidence verification (RAG Explorer) ─────────────────────────
+    # After the LLM answers, run a Chain-of-Verification pass that corroborates
+    # the answer INDIRECTLY (retrieve related facts + check domain-logic rules)
+    # and produces a 0-1 confidence score. The answer itself is never altered.
+    verify_enabled: bool = True
+    # Number of corroboration checks the planner generates per query.
+    verify_num_questions: int = 5
+    # When True, each check re-retrieves fresh context for its own related-fact
+    # question (higher-signal); when False, the checks reuse the answer's context.
+    verify_fresh_retrieval: bool = True
+    # Enrichment only: when a verified answer lands in the LOW band, accept the
+    # verifier's grounded correction and RE-VERIFY it, recomputing confidence for
+    # the new value. This caps how many such correction rounds may run.
+    max_verify_rounds: int = 3
 
     # ── resolved helpers ─────────────────────────────────────────────────────
     @property

@@ -1,418 +1,511 @@
 facility name:
+
 What is the well or the wellbore name?
-
+ 
 lat+long:
+
 What is the geographic location(latitude and longitude) of this well based on its WGS84 coordinates?
-
  
+
+
 openv ID:
+
 What is the operating environment of this well?(Onshore/Offshore)
- 
- 
+
+
 facilityevent spud date:
+
 What is the spud date/kick off date of the well ?
+ 
+
+
+country name: 
+
+What is the country where this well is located?
+ 
+basin name:
+
+what is the basin name of this well? which basin is this well found in?
+
+field name:
+
+what is the field name of this well? what field is this well found in?
+ 
+default vertical measurement ID: 
+
+What is the vertical measurement datum or reference elevation for this well (e.g. KB, Kelly Bushing, RT, Rotary Table, GL, Ground Level, MSL)?
+ 
+current operator ID:
+
+who is the current operator of the well?
+ 
+ 
+marker names:
+
+what are the markers or marker names of the well? what are the formation tops or formation markers, and the lithography or stratigraphy levels?
+ 
+vertical measurement total depth:
+
+what is the vertical measurement as total depth MD of the well? what is the measured depth?
+ 
+completion date:
+
+when was the well completed, or finished or plugged and abandoned? when was the rig released?
+ 
+VirtualProperties.DefaultName*:
+
+What is the well’s name as shown in the report header (well name/official name or well designation) used to identify this well/wellbore?
+ 
+Keywords: well identifier, well ID, well reference, well designation, primary name, assigned name, default name, labelled as, called, aka, well title, report header, cover page, WN, bore name, hole name
+ 
+ResourceCurationStatus*:
+
+What is the data/record status for this well in the report (e.g., QC/verified/approved vs draft/provisional/unverified)?
+ 
+Keywords: curation, status, QC, quality control, verification, validated, approved, authorised, released, final, draft, provisional, unverified, reviewed, checked, certified, controlled data
+ 
+WasBusinessInterestObligatory*:
+
+For this well, was the participating/business interest mandatory (obligatory/compulsory) under the joint venture or agreement, or was participation optional?
+ 
+Keywords: participating interest, PI, working interest, WI, ownership, equity, joint venture, JV, JOA, joint operating agreement, partnership, co-venturers, carried interest, carry, back-in, farm-in, obligation, required participation, election to participate, non-consent, sole risk, penalty
+ 
+RoleID*:
+
+What is the company role identifier (Role ID) for the well—e.g., the operator/licensee or other participant role listed in the parties/participants section?
+ 
+Keywords: operator, licensee, permit holder, permit operator, company, parties, participants, participant ID, party ID, organization, responsible company, well owner, joint venture, JV, working interest, contractor, drilling contractor, rig contractor, service company, vendor, contacts
+ 
+WellborePhase*:
+
+What wellbore phase is described for this well (e.g., explore or drilling phase)?
+ 
+Keywords: phase, drilling phase, well phase, hole section, section, hole interval, hole size, open hole, casing section, casing program, conductor, surface hole, intermediate hole, production hole, pilot hole, sidetrack, ST, re-entry, completion, workover, P&A, plug and abandon, abandonment
+ 
+VirtualProperties.DefaultLocation.QuantitativeAccuracyBandID*:
+
+What location/coordinate accuracy band or positional uncertainty class is stated for the well’s surface location (e.g., coordinate quality code, accuracy category, horizontal uncertainty/error radius)?
+ 
+Keywords: positional accuracy, spatial accuracy, coordinate accuracy, coordinate quality, location quality, uncertainty, horizontal uncertainty, accuracy in metres, error radius, CE90, 2DRMS, GPS, DGPS, surveyed, grid reference, NZTM, NZMG, easting, northing, latitude, longitude
+ 
+WellboreTrajectoryType*:
+
+What is the wellbore trajectory type or well path for this well (e.g., vertical/straight hole vs directional/deviated, J-type/S-type, or horizontal)?
+ 
+Keywords: trajectory, well profile, borehole profile, deviation, directional drilling, deviated hole, inclination, azimuth, dogleg severity, build rate, turn rate, KOP, kick-off point, build and hold, high angle, horizontal section, sidetrack, multilateral, planned vs actual trajectory
+ 
+WellLogs*:
+
+What well logs (wireline/log runs or logging suite) were recorded for this well, including any open-hole or cased-hole logs and the logged intervals?
+ 
+Keywords: geophysical log, electric log, e-log, logging, wireline, LWD, MWD, formation evaluation, petrophysical, log run, log schedule, log programme, GR, gamma ray, resistivity, density, neutron, sonic, caliper, dipmeter, imaging log, FMI, CBL, VDL, cement bond, PLT, production log, P/T survey, survey run, toolstring, service company
+ 
+RegionName*:
+
+What region or basin is this well located in (e.g., region/area, petroleum permit area, or basin name)?
+ 
+Keywords: basin, sedimentary basin, permit area, licence area, block, concession, exploration permit, mining licence, petroleum prospecting licence, PEP, PPL, PML, area, field, province, onshore, offshore, location
+ 
+ProspectName*:
+
+What is the prospect name for this well (i.e., the prospect/structure or target prospect the well was drilled to test) as stated in the well summary/header?
+ 
+Keywords: prospect area, target, target name, structure name, objective, well objective, primary objective, secondary objective, exploration target, drilling objective, permit, licence, block, location, prospect identifier
+ 
+InterestTypeID*:
+
+What interest type (e.g., working interest/participating interest or royalty/ORRI) is stated for this well in the ownership/participants section?
+ 
+Keywords: ownership, equity, joint venture, JV, participants, partners, operator, non-operator, WI, working interest, PI, participating interest, NRI, net revenue interest, RI, royalty interest, ORRI, override royalty, carried interest, interest held, interest classification
+ 
+DataSourceOrganisationID*:
+
+What is the data source organisation (reporting/submitting company), including any organisation/company identifier (e.g., NZBN) listed for this well report?
+ 
+Keywords: operator, licensee, permit operator, reporting party, submitting party, report submitted by, prepared by, compiled by, issued by, author, company ID, organisation ID, organization ID, NZBN, New Zealand Business Number, data owner, data source company
+ 
+VirtualProperties.DefaultLocation.CoordinateQualityCheckPerformedBy*:
+
+Who performed the QA/QC or verification of the well surface location coordinates (lat/long or NZTM easting/northing) in this report?
+ 
+Keywords: location quality control, coordinate quality control, coordinate QAQC, location QAQC, survey QA/QC, survey QAQC, coordinate audit, location audit, coordinate review, location review, coordinate validation, location validation, positional accuracy, coordinate accuracy, GIS check, geospatial check, NZTM, New Zealand Transverse Mercator, easting, northing, latitude, longitude, grid reference, map grid, coordinate system, datum, NZGD2000, WGS84, GDA94, UTM, surveyor, survey company
+ 
+TertiaryProductTypeID*:
+
+What is the tertiary (third) product type/third stream reported for this well (e.g., an additional produced fluid listed in test or production results)?
+ 
+Keywords: tertiary product type, third product type, 3rd product, third stream, additional product, other products, by-product, produced fluids, fluid type, hydrocarbon type, stream, sales stream, production stream, DST results, drill stem test, well test, flow test, production test, test results, production summary, rates, oil gas water, condensate, LPG, NGL
+ 
+ResourceSecurityClassification*:
+
+What is the security classification or confidentiality level for this well report/data (e.g., Public/Released/Open File vs Confidential/Restricted/Commercial-in-Confidence)?
+ 
+Keywords: protective marking, distribution statement, access restriction, restricted, confidential, commercial in confidence, CIC, public, released, open file, unrestricted, embargo, withheld, in confidence, official information, OIA, NZP&M release status
+ 
+SpatialLocation.SpatialParameterTypeID*:
+
+What coordinate system / spatial reference (e.g., NZTM/NZMG or latitude–longitude/WGS84) are the well location coordinates reported in for this well?
+ 
+Keywords: CRS, coordinate reference system, spatial reference system, map projection, projection, grid system, grid reference, easting, northing, NZTM2000, NZTM, NZMG, WGS84, GDA94, EPSG, UTM, zone, geodetic datum, datum, ellipsoid, latitude, longitude, geographic coordinates
+ 
+ExistenceKind*:
+
+What is the well/wellbore status or existence type (e.g., actual/as-drilled vs planned/proposed) stated in this report?
+ 
+Keywords: well status, wellbore status, current status, actual, as drilled, as-drilled, planned, proposed, permit, to be drilled, cancelled, not drilled, existing, active, suspended, shut in, shut-in, abandoned, plugged and abandoned, P&A, TA, temporarily abandoned, dry hole, D&A, decommissioned
+ 
+FacilityTypeID*:
+
+What is the facility type / well type (well classification or purpose) for this well (e.g., exploration, appraisal, development/production, injection/disposal)?
+ 
+Keywords: facility type id, facility classification, well type, well class, well purpose, objective, exploration, appraisal, development, producer, production well, injector, injection well, disposal well, SWD, monitoring well, observation well, P&A, plugged and abandoned
+ 
+TechnicalAssuranceTypeID*:
+
+What technical assurance type or assurance level (e.g., peer review or independent verification) is stated for this well report/work?
+ 
+Keywords: technical assurance, TA, assurance, assurance level, peer review, independent review, independent technical review, independent verification, IV, verification, technical audit, QA/QC, quality assurance, QC check, review type, review category
+ 
+FacilityEvents*:
+
+What are the key well events (facility events) for this well, i.e., the operations chronology/timeline with dates such as spud, TD, completion, suspension or abandonment?
+ 
+Keywords: well chronology, timeline, key dates, event history, operations summary, spud, spudded, commenced drilling, rig on, rig release, TD, total depth, reached TD, completion date, completed, well suspended, suspended, re-entered, reentered, P&A, plug and abandon, abandoned, plugged, tested, drillstem test, DST, flow test, perforated, stimulation, frac, first production, first gas, first oil
+ 
+ProjectedBottomHoleLocation.QuantitativeAccuracyBandID*:
+
+What quantitative accuracy band (accuracy class/ID) is assigned to the projected/planned bottom-hole location (BHL) coordinates for this well?
+ 
+Keywords: projected bottom hole location, planned BHL, prognosed BHL, BHL coordinates, bottomhole location, planned well path, planned trajectory, target location, coordinate accuracy, positional accuracy, horizontal positional accuracy, HPA, location uncertainty, coordinate uncertainty, uncertainty band, survey accuracy, map accuracy, NZTM, NZMG, easting, northing, latitude, longitude
+ 
+VirtualProperties.DefaultLocation.IsDecimated*:
+
+Does this well report indicate the default well location/trajectory coordinates are decimated (thinned/downsampled/simplified), and if so is the ‘decimated’ flag set to yes/true?
+ 
+Keywords: decimation, decimated flag, thinning, downsampling, sub-sampling, simplified coordinates, generalised, reduced points, point density, trajectory points, wellpath, survey stations, coordinate list, lat/long, NZTM, easting, northing
+ 
+BusinessIntentionID*:
+
+What is the business intention ID or permit/consent reference number associated with this well (e.g., Crown Minerals/NZP&M permit number or MBIE reference)?
+ 
+Keywords: intention reference, regulatory reference, permit no., permit#, licence number, license number, PPL, PML, PMP, Crown Minerals, NZP&M, New Zealand Petroleum & Minerals, MBIE, well authority, authorisation, authorization, consent, application ref, work programme, work program, job no., AFE
+ 
+ProjectedBottomHoleLocation.SpatialGeometryTypeID*:
+
+In this well report, how is the projected/predicted bottom-hole location (planned BHL/target) represented—what geometry type is used (point, line/trajectory, or area/polygon)?
+ 
+Keywords: projected bottom hole location, predicted BHL, planned BHL, proposed BHL, target location, bottomhole coordinates, map location, coordinate system, CRS, projection, NZTM, NZTM2000, easting, northing, grid reference, latitude, longitude, WGS84, GIS, shapefile, feature class, POINT, LINESTRING, POLYGON
+ 
+ProjectedBottomHoleLocation.QualitativeSpatialAccuracyTypeID*:
+
+What is the qualitative accuracy class or confidence/accuracy category for the projected (planned) bottom-hole location coordinates for this well (e.g., surveyed/verified vs estimated/approximate)?
+ 
+Keywords: positional accuracy, coordinate accuracy, location accuracy, accuracy class, accuracy category, confidence level, reliability, fix quality, map-derived, indicative, approximate, estimated, unsurveyed, surveyed, verified, as-surveyed, location uncertainty
+ 
+SpatialLocation.SpatialGeometryTypeID*:
+
+How is this well’s spatial location represented in the report—what is the geometry/feature type (e.g., point surface location, bottom-hole point, or wellbore path/trajectory line)?
+ 
+Keywords: feature class, geometry, point, line, polyline, polygon, linestring, location representation, surface location, wellhead coordinates, bottom hole location, BHL, BH location, well path, trajectory, deviation survey, survey stations, as-drilled, planned
+ 
+PrimaryMaterialID*:
+
+What is the primary material identifier for the well’s main tubular string (e.g., casing/liner), as shown as a material ID/stock code/part or serial number in the completion or casing details?
+ 
+Keywords: casing tally, pipe tally, tubulars, casing string, liner string, completion string, tubing string, material number, inventory code, vendor code, product code, serial no., serial number, heat no., heat number, mill certificate, MTC, API pipe, OD, weight, grade, connection
+ 
+StatusSummaryID*:
+
+What is the well’s current status (status summary / operational status), and is there a status reference or status summary number/ID shown in the report header or summary table?
+ 
+Keywords: well status, current status, operational status, wellbore status, status summary, status summary no., status summary number, status ID, summary ID, status reference, well condition, completion status, P&A status, plugged and abandoned, suspended, shut-in, producing, injection, abandoned, status as at
+ 
+GeographicBottomHoleLocation.QuantitativeAccuracyBandID*:
+
+What is the bottom-hole (BHL) location coordinate accuracy band/class or positional accuracy code for this well’s bottom-hole geographic coordinates?
+ 
+Keywords: bottom hole, bottomhole, BHL, BH, location accuracy, coordinate quality, coordinate uncertainty, horizontal uncertainty, XY uncertainty, positional uncertainty, accuracy code, quality code, survey quality, survey accuracy, borehole survey, wellbore survey, deviation survey, directional survey, trajectory survey, MWD, gyro survey, magnetic survey, lat/long accuracy
+ 
+ConditionID*:
+
+What is the condition identifier (condition ID/condition number or status code) given for this well’s reported wellbore condition/status?
+ 
+Keywords: condition id, condition no, cond. id, status id, status code, well status, well condition, wellbore status, condition record, reference number, ref no, integrity status, well integrity, mechanical condition, suspension status, suspended, shut-in, abandonment status, P&A status, completion status
+ 
+InitialOperatorID*:
+
+Who was the initial/original operator of the well (operator at spud/commencement), and what operator ID or company code is shown for them?
+ 
+Keywords: operator, operator of record, permit operator, licence operator, operated by, company code, operator code, company ID, NZBN, operator name, operator address, well header, well data summary, drilling permit, petroleum permit
+ 
+VirtualProperties.DefaultLocation.QualitativeSpatialAccuracyTypeID*:
+
+What is the stated location/coordinate accuracy for the well’s surface location (e.g., surveyed/GPS vs approximate or map-derived), or the reported accuracy class/type?
+ 
+Keywords: positional accuracy, coordinate quality, location quality, location reliability, accuracy category, survey method, GPS, DGPS, RTK, total station, theodolite, surveyed, approximate, estimated, map-derived, digitised, GIS, orthophoto, NZMS, Topo50
+ 
+GeographicBottomHoleLocation.SpatialGeometryTypeID*:
+
+How is the bottom-hole location represented geometrically in this well report (e.g., point vs line/linestring/polyline), for the BHL/bottomhole location or wellpath?
+ 
+Keywords: BHL, bottom-hole location, bottom hole location, bottomhole, BH location, coordinate type, GIS, feature class, shape, point, line, linestring, polyline, polygon, trajectory, well path, deviation survey, as-drilled, map view, coordinates
+ 
+WellboreClassification*:
+
+What is the wellbore classification or well type/purpose for this well (e.g., exploration, appraisal, development/production, injection, sidetrack or pilot hole)?
+ 
+Keywords: objective, classification, category, purpose, type, exploration, appraisal, development, production, injector, injection, water injection, disposal, sidetrack, pilot hole, re-entry, workover, P&A, plugged and abandoned, abandoned, suspended, completed as, drilled as
+ 
+WellID*:
+
+What is the well identifier (Well ID / well number) for this well, as listed in the report header or well summary?
+ 
+Keywords: Well No., Well #, well identifier, well identification, well reference number, NZP&M well number, P&M well number, Crown Minerals well number, permit well number, Unique Well Identifier, UWI, API number, header, well summary, well data sheet
+ 
+GeographicBottomHoleLocation.CoordinateQualityCheckPerformedBy*:
+
+Who performed the quality check/verification (QC) of the bottom-hole location (BHL/BH) coordinates for this well?
+ 
+Keywords: bottom hole location, BHL, BH location, coordinates, coordinate check, coordinate verification, coordinate validation, survey QC, directional survey, MWD survey, gyro survey, minimum curvature, wellpath, deviation survey, survey report, QAQC, quality assurance, quality control, reviewed by, checked by, verified by, surveyor, survey company, contractor
+ 
+GeographicBottomHoleLocation.SpatialParameterTypeID*:
+
+What coordinate type/coordinate reference is used for the well’s bottom-hole location (e.g., latitude/longitude vs NZTM/NZMG easting-northing, and any CRS/datum like WGS84 or NZGD2000)?
+ 
+Keywords: BHL, bottom hole location, BH coordinates, coordinate system, CRS, projection, map projection, geodetic datum, horizontal datum, grid reference, easting, northing, NZTM2000, NZTM, NZMG, NZGD2000, WGS84, EPSG
+ 
+ResourceLifecycleStatus*:
+
+What is the current status/lifecycle status of the well (e.g., producing/active, shut-in, suspended, temporarily abandoned, or plugged and abandoned)?
+ 
+Keywords: well status, wellbore status, operational status, activity status, producing, producer, injector, shut-in, shut in, suspended, temporarily abandoned, T/A, TA, abandoned, P&A, plugged and abandoned, abandonment, decommissioned, completion status, re-entered, reentered, sidetrack, sidetracked
+ 
+FormationNameAtTotalDepth*:
+
+What formation (or member/stratigraphic unit) was at the well’s total depth (TD), i.e., the formation at bottom of hole/end of hole (EOH)?
+ 
+Keywords: TD, total depth, end of hole, EOH, bottom of hole, BOH, bottom, final depth, deepest formation, geological unit, lithostratigraphic unit, strat unit, formation, member, formation tops, stratigraphic column, well prognosis, well summary, final well report
+ 
+FluidDirectionID*:
+
+In this well report, what is the fluid/flow direction stated (producing/flowing to surface vs injecting/pumped down), for the relevant test or completion?
+ 
+Keywords: inflow, outflow, produced, producing, production, injected, injecting, injection, flow to surface, pumped down, returns, circulation, forward circulation, reverse circulation, flowback, producer, injector, tubing, annulus, DST, production test, injection test
+ 
+TechnicalAssuranceID*:
+
+What is the technical assurance (TA) or technical review/QA approval reference number (ID) recorded for this well report?
+ 
+Keywords: technical assurance, TA, TA ref, TA record, technical review, peer review, internal review, QA, QC, QA/QC, approval ref, document control number, DCC ref, revision approval, verification, audit, assurance register, sign-off ID
+ 
+VirtualProperties.DefaultLocation.SpatialGeometryTypeID*:
+
+How is the well’s default surface location represented in the report/GIS (geometry type), e.g., a point location (POINT) versus a line/path (LINESTRING) or polygon/area?
+ 
+Keywords: spatial geometry type ID, SpatialGeometryTypeID, feature type, shape type, GIS, coordinate geometry, WKT, wellhead location, surface location, map view, point, line, LINESTRING, polyline, polygon, area feature, geometry
+ 
+TargetFormation*:
+
+What is the planned target formation or primary target zone/objective for this well (the geological/reservoir objective interval)?
+ 
+Keywords: secondary target, objectives, drilling objective, geological objective, target horizon, objective horizon, target interval, objective interval, target reservoir, reservoir objective, prognosed formation, prognosis, planned TD, target depth, prognosed target, objective zone, target sand, pay zone
+ 
+DefinitiveTrajectoryID*:
+
+What is the ID or reference for the definitive/official wellbore trajectory (final survey or wellpath) for this well?
+ 
+Keywords: wellpath, well path, trajectory, directional survey, surveys, survey, inclination, azimuth, MD, TVD, deviation survey, MWD, gyro, survey run, survey number, file reference, dataset identifier, authoritative, approved, master
+ 
+FacilityID*:
+
+What is the facility ID (facility number / well ID) for this well as listed in the well header or summary tables?
+ 
+Keywords: facility identifier, facility no, facility number, facility code, facility reference, well identifier, well no, well number, well code, well reference, asset ID, asset identifier, site ID, unique identifier, well header, well summary, well data summary, well registration number, PCE well number, permit number
+ 
+OutcomeID*:
+
+What is the well outcome/result (final well status), including any result/outcome ID or status code given in the report?
+ 
+Keywords: well status, final status, current status, result code, status code, well result, completion status, well classification, producer, injector, suspended, shut-in, abandoned, dry hole, plugged and abandoned, P&A, plugged back, lost hole
+ 
+AssociatedIdentities*:
+
+What are the other identifiers for this well (alternate names/numbers), such as UWI, well number, permit/licence well number, or any ‘also known as’/formerly listed IDs?
+ 
+Keywords: identifier, identifiers, identity, identities, alternate ID, alternative ID, alias, aka, formerly, previously, cross-reference, UWI, unique well identifier, well number, well no., permit number, permit well number, licence number, well licence, WL, operator well number, company well number, NZP&M, New Zealand Petroleum & Minerals, Crown Minerals, regulator ID
+ 
+GeographicBottomHoleLocation.QualitativeSpatialAccuracyTypeID*:
+
+What is the bottom-hole location (BHL) coordinate accuracy/accuracy class stated for the well (e.g., surveyed vs approximate/estimated), as reported with the bottom-hole coordinates?
+ 
+Keywords: BHL, bottom hole location, bottomhole location, BH, coordinate accuracy, accuracy type, qualitative accuracy, location quality, positional accuracy, reliability, uncertainty, accuracy class, survey class, survey quality, surveyed, estimated, approximate, GPS, coordinate source, map, well location, deviation survey
+ 
+WellboreStatus*:
+
+What is the current well/wellbore status (e.g., drilling, completed, suspended/shut-in, producing, or P&A/abandoned) as stated in this well report?
+ 
+Keywords: current status, operational status, well condition, completion status, final status, status summary, well suspended, shut in, shut-in, SI, producing, on production, abandoned, temporarily abandoned, TA, plug and abandon, P&A, plugged and abandoned, re-entry, re-entered, sidetrack, sidetracked
+ 
+PrimaryProductTypeID*:
+
+In this well report, what is the primary product/production type for the well (e.g., oil well vs gas well, or gas-condensate) stated in the completion or well summary?
+ 
+Keywords: producing fluid, produced hydrocarbon, primary produced fluid, hydrocarbon type, reservoir fluid, well objective, product, production type, well type, oil, gas, condensate, gas-condensate, DST, test results, completion, production
+ 
+VersionCreationReason*:
+
+What is the reason for this report/record version being created (revision reason or reason for update/correction) as stated in the version history or revision notes?
+ 
+Keywords: revision history, version history, change log, document control, reason for change, amended, updated, revised, reissued, erratum, correction, supersedes, superseded, replaces previous, issue, reissue, update note, revision notes
+ 
+VerticalMeasurements*:
+
+What vertical measurement datums are given for the well (e.g., KB/RT/GL/MSL) and what are their stated elevations or offsets (such as KB above GL or RT above MSL)?
+ 
+Keywords: vertical reference, depth datum, reference datum, datum elevation, reference elevation, elevation, offset, above, below, KB elevation, Kelly Bushing, RT elevation, Rotary Table, DF, drill floor, RKB, GL, ground level, MSL, mean sea level, rig datum, wellhead elevation, WH, seabed elevation, datum conversion, datum tie
+ 
+FacilityDescription*:
+
+What is the facility or wellsite description for this well (including any site/pad or platform description and surface facilities/wellhead arrangement)?
+ 
+Keywords: surface location, drill site, wellsite, pad, lease, platform, wellhead, Xmas tree, cellars, conductor, access road, helicopter access, campsite, utilities, water supply, power, communications, tie-in, flowline, manifold, separator, production facilities, infrastructure, site layout
+ 
+KickOffWellbore*:
+
+For this wellbore, what is the kickoff (KO) / parent wellbore it was sidetracked from (e.g., “sidetracked from” or “kicked off from”)?
+ 
+Keywords: sidetrack parent, parent hole, original hole, wellbore name, hole section, re-entry, whipstock, window milled, sidetrack, ST, KO point, kickoff point, departure point, sidetrack number, branch wellbore
+ 
+WellboreHydrocarbonType*:
+
+What hydrocarbon type/produced fluid does this wellbore contain or test (e.g., oil, gas, condensate), as stated in the completion or test results?
+ 
+Keywords: HC, hydrocarbons, oil, gas, condensate, wet gas, dry gas, gas-condensate, product, fluid, produced, flowed, recovered, shows, oil show, gas show, DST, drill stem test, production test, well test, flow test, completion report, well data summary
+ 
+SpatialLocation.CoordinateQualityCheckPerformedBy*:
+
+Who performed the coordinate/location QA/QC (coordinate verification/check) for this well’s surface location (e.g., checked/verified/reviewed by)?
+ 
+Keywords: coordinate QAQC, QA/QC, QC, verification, verify, checked by, reviewed by, validated by, auditor, audit, survey QC, survey verification, survey check, GIS, geodetic, NZGD2000, easting, northing, latitude, longitude, wellhead location, surface location, location survey, as-built survey
+ 
+UWI*:
+
+What is the well’s UWI or Unique Well Identifier (i.e., official well number/reference number) as stated in this report?
+ 
+Keywords: well no., well number, well identifier, well ID, reference number, permit no., permit number, licence number, license number, well licence, NZP&M, New Zealand Petroleum & Minerals, Petroleum permit, PPL, PML, API no., API number
+ 
+WasBusinessInterestFinancialNonOperated*:
+
+Does this report state the well interest is non-operated/non-operating (a financial interest only, i.e., not the operator)?
+ 
+Keywords: financial interest, non-operating, non operated, non-operator, not operator, operator status, operator, operated, working interest, WI, participant, joint venture, JV, carried interest, interest type
+ 
+NameAliases*:
+
+What alias/aka (also known as) names does this well or wellbore have, including any previous/alternate names it was formerly reported under?
+ 
+Keywords: formerly, previous name, renamed, name change, alternate name, alternative name, other names, known as, reported as, well designation, operator name, company name, internal name, NZ well number, well number, permit well number, well identifier, registry name, spelling variant, sidetrack name
+ 
+ShowProductTypeID*:
+
+What is the well’s product/produced fluid type (e.g., oil, gas, condensate), or the producer/injector classification stated in this well completion or test report?
+ 
+Keywords: product type ID, product code, produced fluid, production type, well type, well classification, hydrocarbon type, produced hydrocarbons, primary product, target fluid, producer, injector, water injector, gas injector, CO2 injection, production stream, oil, gas, condensate, gas-condensate, NGL, LPG, water producer
+ 
+ProjectedBottomHoleLocation.CoordinateQualityCheckPerformedBy*:
+
+Who performed the coordinate QA/QC (checked/verified by) for the projected bottom-hole location (PBHL) or bottom-hole coordinates in this well report?
+ 
+Keywords: PBHL, projected bottom hole location, BHL, bottom hole location, coordinates, grid coordinates, easting, northing, NZTM, NZMG, UTM, latitude, longitude, wellhead to PBHL, planned wellpath, trajectory, deviation survey, directional survey, survey program, MWD survey, gyro, multishot, final survey, survey report, survey check, QA, QC, verification, validation, review, sign-off, approved by
+ 
+GeoContexts*:
+
+What geological context is given for this well (e.g., basin or sub-basin, field/structure or prospect, and any play/fairway or permit area context)?
+ 
+Keywords: geological setting, regional geology, tectonic setting, basin, sub-basin, depocentre, play, fairway, trend, province, field, structure, prospect, lead, area, block, permit, permit area, licence, concession, PEP, PPL, PML, exploration permit
+ 
+WasBusinessInterestTechnical*:
+
+In this well report, is the business/working interest classified as a technical interest (operator/technical) rather than a non-technical/financial interest?
+ 
+Keywords: interest type, working interest, WI, participating interest, PI, equity, ownership, beneficial interest, licence interest, permit interest, farm-in, farmout, partner, joint venture, JV, operator, non-operator, participant, party role, percentage interest
+ 
+VirtualProperties.DefaultLocation.SpatialParameterTypeID*:
+
+What coordinate system/projection and datum are the well’s default location coordinates reported in (e.g., NZTM2000/NZGD2000, UTM, WGS84, Lat/Long vs Easting/Northing)?
+ 
+Keywords: CRS, SRS, spatial reference, coordinate reference, projection, horizontal datum, geodetic datum, survey datum, NZGD2000, NZGD49, WGS84, NZTM, NZTM2000, NZ Transverse Mercator, MGNZ, UTM, zone, latitude, longitude, lat/long, easting, northing, E/N, grid reference
+ 
+ProjectedBottomHoleLocation.SpatialParameterTypeID*:
+
+What coordinate system / map projection is used for the projected bottom-hole location (e.g., NZTM/NZTM2000 grid easting/northing or latitude/longitude, and stated datum/CRS)?
+ 
+Keywords: bottom hole location, BHL, projected BHL, BH coordinates, coordinate type, coordinate system, CRS, coordinate reference system, spatial reference, projection, map projection, grid, grid reference, easting, northing, NZTM, NZTM2000, NZMG, UTM, lat long, latitude, longitude, WGS84, NZGD2000, datum, geodetic datum
+ 
+ResourceHomeRegionID*:
+
+What is the well’s home region/operating region identifier (region ID or area code) as stated in this report?
+ 
+Keywords: resource home region id, region identifier, region code, area identifier, area code, asset region, operating region, business unit, BU, asset hierarchy, asset code, basin, field area, permit area, licence area, PML, PPL, PRC, block, concession
+ 
+SpatialLocation.QualitativeSpatialAccuracyTypeID*:
+
+What is the stated location/positional accuracy or accuracy class for the well coordinates (e.g., surveyed, estimated/approximate, or a survey grade)?
+ 
+Keywords: positional accuracy, coordinate accuracy, spatial accuracy, location quality, accuracy class, survey class, survey grade, survey quality, confidence level, reliability, uncertainty, estimated location, approximate location, GIS accuracy, grid reference accuracy
+ 
+WellboreReasonID*:
+
+What is the wellbore reason/purpose or well objective stated for this wellbore (e.g., exploration, appraisal, development/production, injection, sidetrack or re-entry)?
+ 
+Keywords: wellbore purpose, reason for drilling, objective, well intent, well type, classification, intended use, exploration, appraisal, development, production, injector, injection, disposal, water injection, gas injection, observation, monitoring, pilot hole, slimhole, sidetrack, sidetrack objective, re-entry, re-entry objective, relief well, reason code, objective code
+ 
+TechnicalAssurances*:
+
+What technical assurance/peer review (TA) or QA/QC sign-off is recorded for this well report (e.g., checked/reviewed/approved by, with dates or comments)?
+ 
+Keywords: technical assurance, TA, technical review, peer review, QA/QC, quality assurance, quality control, checked by, reviewed by, verified by, approved by, authorised by, endorsed by, sign-off, signed off, certification, validated, assurance statement, competent person
+ 
+WellboreTrajectoryTypeID*:
+
+What is the wellbore trajectory type or well profile for this well (e.g., vertical/straight, deviated/directional, horizontal, ERD, sidetrack)?
+ 
+Keywords: trajectory, well path, borehole path, deviation, directional drilling, inclination, azimuth, survey, MWD, gyro, build rate, turn rate, dogleg severity, DLS, tangent section, kick-off point, KOP, build and hold, J curve, S curve, horizontal section, extended reach, ERD, sidetrack, ST, multilateral, ML
+ 
+WasBusinessInterestFinancialOperated*:
+
+Is this well financially operated (i.e., who is the operator of record / financially responsible operator) as stated in the report?
+ 
+Keywords: operator, operated by, operated for, operator of record, financial operator, financially responsible, operating interest, working interest, WI, JV operator, joint venture, permit operator, licence operator, company/operator, ownership, interest, equity, participating interest
+ 
+BlockName*:
+
+What is the block name (licence block / permit area) for this well as stated in the well data summary or header information?
+ 
+Keywords: block, licence block, license block, permit block, permit area, licence area, license area, acreage, exploration block, production block, petroleum permit, PEP, PPL, PMP, permit number, licence no., license no., contract area
+ 
+SecondaryProductTypeID*:
+
+What is the secondary product type for this well (e.g., associated gas, condensate/NGL, or produced water) as stated in the completion/production summary?
+ 
+Keywords: secondary product, secondary produced product, by-product, co-product, associated gas, associated oil, condensate, NGL, LPG, C5+, produced water, formation water, brine, produced fluids, products, production stream, GOR, CGR, oil and gas shows, hydrocarbons
+ 
+SpatialLocation.QuantitativeAccuracyBandID*:
+
+What location accuracy band/class is given for the well’s surface coordinates (positional/horizontal accuracy or coordinate uncertainty, e.g., ±m or an accuracy class) in this report?
+ 
+Keywords: surface location, wellhead coordinates, coordinate quality, position quality, spatial quality, accuracy code, accuracy rating, uncertainty (m), error radius, CEP, 2-sigma, confidence level, survey method, GPS, GNSS, differential GPS, DGPS, topographic map, NZTM, NZMG, WGS84, latitude, longitude, easting, northing
+ 
+VirtualProperties.DefaultLocation.Wgs84Coordinates*:
+
+What are the well’s surface/wellhead coordinates (latitude/longitude, WGS84 or GPS lat/long) given in this report?
+ 
+Keywords: location, well location, wellhead location, surface location, coordinates, co-ordinates, lat, latitude, lon, longitude, lat/long, lat-long, lat/lon, GPS, easting, northing, NZTM, NZTM2000, NZGD2000, NZMG, grid reference, map reference, UTM, datum, geodetic datum, map coordinates
+ 
+TrajectoryTypeID*:
+
+What is the wellbore trajectory type or well path profile for this well (e.g., vertical/straight hole, deviated/directional, horizontal, or sidetrack)?
+ 
+Keywords: trajectory, well path, wellbore path, deviation survey, survey program, inclination, azimuth, dogleg, DLS, KOP, kickoff point, build, hold, drop, J profile, S profile, high angle, lateral, motherbore, mainbore, pilot hole, sidetrack, ST
 
  
-country name: 
-What is the country where this well is located?
-
-basin name:
-what is the basin name of this well? which basin is this well found in?
-field name:
-what is the field name of this well? what field is this well found in?
-
-default vertical measurement ID: 
-What is the vertical measurement datum or reference elevation for this well (e.g. KB, Kelly Bushing, RT, Rotary Table, GL, Ground Level, MSL)?
-
-current operator ID:
-who is the current operator of the well?
-
-
-marker names:
-what are the markers or marker names of the well? what are the formation tops or formation markers, and the lithography or stratigraphy levels?
-
-vertical measurement total depth:
-what is the vertical measurement as total depth MD of the well? what is the measured depth?
-
-completion date:
-when was the well completed, or finished or plugged and abandoned? when was the rig released?
-
-VirtualProperties.DefaultName*:
-What is the well’s name as shown in the report header (well name/official name or well designation) used to identify this well/wellbore?
-
-Keywords: well identifier, well ID, well reference, well designation, primary name, assigned name, default name, labelled as, called, aka, well title, report header, cover page, WN, bore name, hole name
-
-ResourceCurationStatus*:
-What is the data/record status for this well in the report (e.g., QC/verified/approved vs draft/provisional/unverified)?
-
-Keywords: curation, status, QC, quality control, verification, validated, approved, authorised, released, final, draft, provisional, unverified, reviewed, checked, certified, controlled data
-
-WasBusinessInterestObligatory*:
-For this well, was the participating/business interest mandatory (obligatory/compulsory) under the joint venture or agreement, or was participation optional?
-
-Keywords: participating interest, PI, working interest, WI, ownership, equity, joint venture, JV, JOA, joint operating agreement, partnership, co-venturers, carried interest, carry, back-in, farm-in, obligation, required participation, election to participate, non-consent, sole risk, penalty
-
-RoleID*:
-What is the company role identifier (Role ID) for the well—e.g., the operator/licensee or other participant role listed in the parties/participants section?
-
-Keywords: operator, licensee, permit holder, permit operator, company, parties, participants, participant ID, party ID, organization, responsible company, well owner, joint venture, JV, working interest, contractor, drilling contractor, rig contractor, service company, vendor, contacts
-
-WellborePhase*:
-What wellbore phase is described for this well (e.g., explore or drilling phase)?
-
-Keywords: phase, drilling phase, well phase, hole section, section, hole interval, hole size, open hole, casing section, casing program, conductor, surface hole, intermediate hole, production hole, pilot hole, sidetrack, ST, re-entry, completion, workover, P&A, plug and abandon, abandonment
-
-VirtualProperties.DefaultLocation.QuantitativeAccuracyBandID*:
-What location/coordinate accuracy band or positional uncertainty class is stated for the well’s surface location (e.g., coordinate quality code, accuracy category, horizontal uncertainty/error radius)?
-
-Keywords: positional accuracy, spatial accuracy, coordinate accuracy, coordinate quality, location quality, uncertainty, horizontal uncertainty, accuracy in metres, error radius, CE90, 2DRMS, GPS, DGPS, surveyed, grid reference, NZTM, NZMG, easting, northing, latitude, longitude
-
-WellboreTrajectoryType*:
-What is the wellbore trajectory type or well path for this well (e.g., vertical/straight hole vs directional/deviated, J-type/S-type, or horizontal)?
-
-Keywords: trajectory, well profile, borehole profile, deviation, directional drilling, deviated hole, inclination, azimuth, dogleg severity, build rate, turn rate, KOP, kick-off point, build and hold, high angle, horizontal section, sidetrack, multilateral, planned vs actual trajectory
-
-WellLogs*:
-What well logs (wireline/log runs or logging suite) were recorded for this well, including any open-hole or cased-hole logs and the logged intervals?
-
-Keywords: geophysical log, electric log, e-log, logging, wireline, LWD, MWD, formation evaluation, petrophysical, log run, log schedule, log programme, GR, gamma ray, resistivity, density, neutron, sonic, caliper, dipmeter, imaging log, FMI, CBL, VDL, cement bond, PLT, production log, P/T survey, survey run, toolstring, service company
-
-RegionName*:
-What region or basin is this well located in (e.g., region/area, petroleum permit area, or basin name)?
-
-Keywords: basin, sedimentary basin, permit area, licence area, block, concession, exploration permit, mining licence, petroleum prospecting licence, PEP, PPL, PML, area, field, province, onshore, offshore, location
-
-ProspectName*:
-What is the prospect name for this well (i.e., the prospect/structure or target prospect the well was drilled to test) as stated in the well summary/header?
-
-Keywords: prospect area, target, target name, structure name, objective, well objective, primary objective, secondary objective, exploration target, drilling objective, permit, licence, block, location, prospect identifier
-
-InterestTypeID*:
-What interest type (e.g., working interest/participating interest or royalty/ORRI) is stated for this well in the ownership/participants section?
-
-Keywords: ownership, equity, joint venture, JV, participants, partners, operator, non-operator, WI, working interest, PI, participating interest, NRI, net revenue interest, RI, royalty interest, ORRI, override royalty, carried interest, interest held, interest classification
-
-DataSourceOrganisationID*:
-What is the data source organisation (reporting/submitting company), including any organisation/company identifier (e.g., NZBN) listed for this well report?
-
-Keywords: operator, licensee, permit operator, reporting party, submitting party, report submitted by, prepared by, compiled by, issued by, author, company ID, organisation ID, organization ID, NZBN, New Zealand Business Number, data owner, data source company
-
-VirtualProperties.DefaultLocation.CoordinateQualityCheckPerformedBy*:
-Who performed the QA/QC or verification of the well surface location coordinates (lat/long or NZTM easting/northing) in this report?
-
-Keywords: location quality control, coordinate quality control, coordinate QAQC, location QAQC, survey QA/QC, survey QAQC, coordinate audit, location audit, coordinate review, location review, coordinate validation, location validation, positional accuracy, coordinate accuracy, GIS check, geospatial check, NZTM, New Zealand Transverse Mercator, easting, northing, latitude, longitude, grid reference, map grid, coordinate system, datum, NZGD2000, WGS84, GDA94, UTM, surveyor, survey company
-
-TertiaryProductTypeID*:
-What is the tertiary (third) product type/third stream reported for this well (e.g., an additional produced fluid listed in test or production results)?
-
-Keywords: tertiary product type, third product type, 3rd product, third stream, additional product, other products, by-product, produced fluids, fluid type, hydrocarbon type, stream, sales stream, production stream, DST results, drill stem test, well test, flow test, production test, test results, production summary, rates, oil gas water, condensate, LPG, NGL
-
-ResourceSecurityClassification*:
-What is the security classification or confidentiality level for this well report/data (e.g., Public/Released/Open File vs Confidential/Restricted/Commercial-in-Confidence)?
-
-Keywords: protective marking, distribution statement, access restriction, restricted, confidential, commercial in confidence, CIC, public, released, open file, unrestricted, embargo, withheld, in confidence, official information, OIA, NZP&M release status
-
-SpatialLocation.SpatialParameterTypeID*:
-What coordinate system / spatial reference (e.g., NZTM/NZMG or latitude–longitude/WGS84) are the well location coordinates reported in for this well?
-
-Keywords: CRS, coordinate reference system, spatial reference system, map projection, projection, grid system, grid reference, easting, northing, NZTM2000, NZTM, NZMG, WGS84, GDA94, EPSG, UTM, zone, geodetic datum, datum, ellipsoid, latitude, longitude, geographic coordinates
-
-ExistenceKind*:
-What is the well/wellbore status or existence type (e.g., actual/as-drilled vs planned/proposed) stated in this report?
-
-Keywords: well status, wellbore status, current status, actual, as drilled, as-drilled, planned, proposed, permit, to be drilled, cancelled, not drilled, existing, active, suspended, shut in, shut-in, abandoned, plugged and abandoned, P&A, TA, temporarily abandoned, dry hole, D&A, decommissioned
-
-FacilityTypeID*:
-What is the facility type / well type (well classification or purpose) for this well (e.g., exploration, appraisal, development/production, injection/disposal)?
-
-Keywords: facility type id, facility classification, well type, well class, well purpose, objective, exploration, appraisal, development, producer, production well, injector, injection well, disposal well, SWD, monitoring well, observation well, P&A, plugged and abandoned
-
-TechnicalAssuranceTypeID*:
-What technical assurance type or assurance level (e.g., peer review or independent verification) is stated for this well report/work?
-
-Keywords: technical assurance, TA, assurance, assurance level, peer review, independent review, independent technical review, independent verification, IV, verification, technical audit, QA/QC, quality assurance, QC check, review type, review category
-
-FacilityEvents*:
-What are the key well events (facility events) for this well, i.e., the operations chronology/timeline with dates such as spud, TD, completion, suspension or abandonment?
-
-Keywords: well chronology, timeline, key dates, event history, operations summary, spud, spudded, commenced drilling, rig on, rig release, TD, total depth, reached TD, completion date, completed, well suspended, suspended, re-entered, reentered, P&A, plug and abandon, abandoned, plugged, tested, drillstem test, DST, flow test, perforated, stimulation, frac, first production, first gas, first oil
-
-ProjectedBottomHoleLocation.QuantitativeAccuracyBandID*:
-What quantitative accuracy band (accuracy class/ID) is assigned to the projected/planned bottom-hole location (BHL) coordinates for this well?
-
-Keywords: projected bottom hole location, planned BHL, prognosed BHL, BHL coordinates, bottomhole location, planned well path, planned trajectory, target location, coordinate accuracy, positional accuracy, horizontal positional accuracy, HPA, location uncertainty, coordinate uncertainty, uncertainty band, survey accuracy, map accuracy, NZTM, NZMG, easting, northing, latitude, longitude
-
-VirtualProperties.DefaultLocation.IsDecimated*:
-Does this well report indicate the default well location/trajectory coordinates are decimated (thinned/downsampled/simplified), and if so is the ‘decimated’ flag set to yes/true?
-
-Keywords: decimation, decimated flag, thinning, downsampling, sub-sampling, simplified coordinates, generalised, reduced points, point density, trajectory points, wellpath, survey stations, coordinate list, lat/long, NZTM, easting, northing
-
-BusinessIntentionID*:
-What is the business intention ID or permit/consent reference number associated with this well (e.g., Crown Minerals/NZP&M permit number or MBIE reference)?
-
-Keywords: intention reference, regulatory reference, permit no., permit#, licence number, license number, PPL, PML, PMP, Crown Minerals, NZP&M, New Zealand Petroleum & Minerals, MBIE, well authority, authorisation, authorization, consent, application ref, work programme, work program, job no., AFE
-
-ProjectedBottomHoleLocation.SpatialGeometryTypeID*:
-In this well report, how is the projected/predicted bottom-hole location (planned BHL/target) represented—what geometry type is used (point, line/trajectory, or area/polygon)?
-
-Keywords: projected bottom hole location, predicted BHL, planned BHL, proposed BHL, target location, bottomhole coordinates, map location, coordinate system, CRS, projection, NZTM, NZTM2000, easting, northing, grid reference, latitude, longitude, WGS84, GIS, shapefile, feature class, POINT, LINESTRING, POLYGON
-
-ProjectedBottomHoleLocation.QualitativeSpatialAccuracyTypeID*:
-What is the qualitative accuracy class or confidence/accuracy category for the projected (planned) bottom-hole location coordinates for this well (e.g., surveyed/verified vs estimated/approximate)?
-
-Keywords: positional accuracy, coordinate accuracy, location accuracy, accuracy class, accuracy category, confidence level, reliability, fix quality, map-derived, indicative, approximate, estimated, unsurveyed, surveyed, verified, as-surveyed, location uncertainty
-
-SpatialLocation.SpatialGeometryTypeID*:
-How is this well’s spatial location represented in the report—what is the geometry/feature type (e.g., point surface location, bottom-hole point, or wellbore path/trajectory line)?
-
-Keywords: feature class, geometry, point, line, polyline, polygon, linestring, location representation, surface location, wellhead coordinates, bottom hole location, BHL, BH location, well path, trajectory, deviation survey, survey stations, as-drilled, planned
-
-PrimaryMaterialID*:
-What is the primary material identifier for the well’s main tubular string (e.g., casing/liner), as shown as a material ID/stock code/part or serial number in the completion or casing details?
-
-Keywords: casing tally, pipe tally, tubulars, casing string, liner string, completion string, tubing string, material number, inventory code, vendor code, product code, serial no., serial number, heat no., heat number, mill certificate, MTC, API pipe, OD, weight, grade, connection
-
-StatusSummaryID*:
-What is the well’s current status (status summary / operational status), and is there a status reference or status summary number/ID shown in the report header or summary table?
-
-Keywords: well status, current status, operational status, wellbore status, status summary, status summary no., status summary number, status ID, summary ID, status reference, well condition, completion status, P&A status, plugged and abandoned, suspended, shut-in, producing, injection, abandoned, status as at
-
-GeographicBottomHoleLocation.QuantitativeAccuracyBandID*:
-What is the bottom-hole (BHL) location coordinate accuracy band/class or positional accuracy code for this well’s bottom-hole geographic coordinates?
-
-Keywords: bottom hole, bottomhole, BHL, BH, location accuracy, coordinate quality, coordinate uncertainty, horizontal uncertainty, XY uncertainty, positional uncertainty, accuracy code, quality code, survey quality, survey accuracy, borehole survey, wellbore survey, deviation survey, directional survey, trajectory survey, MWD, gyro survey, magnetic survey, lat/long accuracy
-
-ConditionID*:
-What is the condition identifier (condition ID/condition number or status code) given for this well’s reported wellbore condition/status?
-
-Keywords: condition id, condition no, cond. id, status id, status code, well status, well condition, wellbore status, condition record, reference number, ref no, integrity status, well integrity, mechanical condition, suspension status, suspended, shut-in, abandonment status, P&A status, completion status
-
-InitialOperatorID*:
-Who was the initial/original operator of the well (operator at spud/commencement), and what operator ID or company code is shown for them?
-
-Keywords: operator, operator of record, permit operator, licence operator, operated by, company code, operator code, company ID, NZBN, operator name, operator address, well header, well data summary, drilling permit, petroleum permit
-
-VirtualProperties.DefaultLocation.QualitativeSpatialAccuracyTypeID*:
-What is the stated location/coordinate accuracy for the well’s surface location (e.g., surveyed/GPS vs approximate or map-derived), or the reported accuracy class/type?
-
-Keywords: positional accuracy, coordinate quality, location quality, location reliability, accuracy category, survey method, GPS, DGPS, RTK, total station, theodolite, surveyed, approximate, estimated, map-derived, digitised, GIS, orthophoto, NZMS, Topo50
-
-GeographicBottomHoleLocation.SpatialGeometryTypeID*:
-How is the bottom-hole location represented geometrically in this well report (e.g., point vs line/linestring/polyline), for the BHL/bottomhole location or wellpath?
-
-Keywords: BHL, bottom-hole location, bottom hole location, bottomhole, BH location, coordinate type, GIS, feature class, shape, point, line, linestring, polyline, polygon, trajectory, well path, deviation survey, as-drilled, map view, coordinates
-
-WellboreClassification*:
-What is the wellbore classification or well type/purpose for this well (e.g., exploration, appraisal, development/production, injection, sidetrack or pilot hole)?
-
-Keywords: objective, classification, category, purpose, type, exploration, appraisal, development, production, injector, injection, water injection, disposal, sidetrack, pilot hole, re-entry, workover, P&A, plugged and abandoned, abandoned, suspended, completed as, drilled as
-
-WellID*:
-What is the well identifier (Well ID / well number) for this well, as listed in the report header or well summary?
-
-Keywords: Well No., Well #, well identifier, well identification, well reference number, NZP&M well number, P&M well number, Crown Minerals well number, permit well number, Unique Well Identifier, UWI, API number, header, well summary, well data sheet
-
-GeographicBottomHoleLocation.CoordinateQualityCheckPerformedBy*:
-Who performed the quality check/verification (QC) of the bottom-hole location (BHL/BH) coordinates for this well?
-
-Keywords: bottom hole location, BHL, BH location, coordinates, coordinate check, coordinate verification, coordinate validation, survey QC, directional survey, MWD survey, gyro survey, minimum curvature, wellpath, deviation survey, survey report, QAQC, quality assurance, quality control, reviewed by, checked by, verified by, surveyor, survey company, contractor
-
-GeographicBottomHoleLocation.SpatialParameterTypeID*:
-What coordinate type/coordinate reference is used for the well’s bottom-hole location (e.g., latitude/longitude vs NZTM/NZMG easting-northing, and any CRS/datum like WGS84 or NZGD2000)?
-
-Keywords: BHL, bottom hole location, BH coordinates, coordinate system, CRS, projection, map projection, geodetic datum, horizontal datum, grid reference, easting, northing, NZTM2000, NZTM, NZMG, NZGD2000, WGS84, EPSG
-
-ResourceLifecycleStatus*:
-What is the current status/lifecycle status of the well (e.g., producing/active, shut-in, suspended, temporarily abandoned, or plugged and abandoned)?
-
-Keywords: well status, wellbore status, operational status, activity status, producing, producer, injector, shut-in, shut in, suspended, temporarily abandoned, T/A, TA, abandoned, P&A, plugged and abandoned, abandonment, decommissioned, completion status, re-entered, reentered, sidetrack, sidetracked
-
-FormationNameAtTotalDepth*:
-What formation (or member/stratigraphic unit) was at the well’s total depth (TD), i.e., the formation at bottom of hole/end of hole (EOH)?
-
-Keywords: TD, total depth, end of hole, EOH, bottom of hole, BOH, bottom, final depth, deepest formation, geological unit, lithostratigraphic unit, strat unit, formation, member, formation tops, stratigraphic column, well prognosis, well summary, final well report
-
-FluidDirectionID*:
-In this well report, what is the fluid/flow direction stated (producing/flowing to surface vs injecting/pumped down), for the relevant test or completion?
-
-Keywords: inflow, outflow, produced, producing, production, injected, injecting, injection, flow to surface, pumped down, returns, circulation, forward circulation, reverse circulation, flowback, producer, injector, tubing, annulus, DST, production test, injection test
-
-TechnicalAssuranceID*:
-What is the technical assurance (TA) or technical review/QA approval reference number (ID) recorded for this well report?
-
-Keywords: technical assurance, TA, TA ref, TA record, technical review, peer review, internal review, QA, QC, QA/QC, approval ref, document control number, DCC ref, revision approval, verification, audit, assurance register, sign-off ID
-
-VirtualProperties.DefaultLocation.SpatialGeometryTypeID*:
-How is the well’s default surface location represented in the report/GIS (geometry type), e.g., a point location (POINT) versus a line/path (LINESTRING) or polygon/area?
-
-Keywords: spatial geometry type ID, SpatialGeometryTypeID, feature type, shape type, GIS, coordinate geometry, WKT, wellhead location, surface location, map view, point, line, LINESTRING, polyline, polygon, area feature, geometry
-
-TargetFormation*:
-What is the planned target formation or primary target zone/objective for this well (the geological/reservoir objective interval)?
-
-Keywords: secondary target, objectives, drilling objective, geological objective, target horizon, objective horizon, target interval, objective interval, target reservoir, reservoir objective, prognosed formation, prognosis, planned TD, target depth, prognosed target, objective zone, target sand, pay zone
-
-DefinitiveTrajectoryID*:
-What is the ID or reference for the definitive/official wellbore trajectory (final survey or wellpath) for this well?
-
-Keywords: wellpath, well path, trajectory, directional survey, surveys, survey, inclination, azimuth, MD, TVD, deviation survey, MWD, gyro, survey run, survey number, file reference, dataset identifier, authoritative, approved, master
-
-FacilityID*:
-What is the facility ID (facility number / well ID) for this well as listed in the well header or summary tables?
-
-Keywords: facility identifier, facility no, facility number, facility code, facility reference, well identifier, well no, well number, well code, well reference, asset ID, asset identifier, site ID, unique identifier, well header, well summary, well data summary, well registration number, PCE well number, permit number
-
-OutcomeID*:
-What is the well outcome/result (final well status), including any result/outcome ID or status code given in the report?
-
-Keywords: well status, final status, current status, result code, status code, well result, completion status, well classification, producer, injector, suspended, shut-in, abandoned, dry hole, plugged and abandoned, P&A, plugged back, lost hole
-
-AssociatedIdentities*:
-What are the other identifiers for this well (alternate names/numbers), such as UWI, well number, permit/licence well number, or any ‘also known as’/formerly listed IDs?
-
-Keywords: identifier, identifiers, identity, identities, alternate ID, alternative ID, alias, aka, formerly, previously, cross-reference, UWI, unique well identifier, well number, well no., permit number, permit well number, licence number, well licence, WL, operator well number, company well number, NZP&M, New Zealand Petroleum & Minerals, Crown Minerals, regulator ID
-
-GeographicBottomHoleLocation.QualitativeSpatialAccuracyTypeID*:
-What is the bottom-hole location (BHL) coordinate accuracy/accuracy class stated for the well (e.g., surveyed vs approximate/estimated), as reported with the bottom-hole coordinates?
-
-Keywords: BHL, bottom hole location, bottomhole location, BH, coordinate accuracy, accuracy type, qualitative accuracy, location quality, positional accuracy, reliability, uncertainty, accuracy class, survey class, survey quality, surveyed, estimated, approximate, GPS, coordinate source, map, well location, deviation survey
-
-WellboreStatus*:
-What is the current well/wellbore status (e.g., drilling, completed, suspended/shut-in, producing, or P&A/abandoned) as stated in this well report?
-
-Keywords: current status, operational status, well condition, completion status, final status, status summary, well suspended, shut in, shut-in, SI, producing, on production, abandoned, temporarily abandoned, TA, plug and abandon, P&A, plugged and abandoned, re-entry, re-entered, sidetrack, sidetracked
-
-PrimaryProductTypeID*:
-In this well report, what is the primary product/production type for the well (e.g., oil well vs gas well, or gas-condensate) stated in the completion or well summary?
-
-Keywords: producing fluid, produced hydrocarbon, primary produced fluid, hydrocarbon type, reservoir fluid, well objective, product, production type, well type, oil, gas, condensate, gas-condensate, DST, test results, completion, production
-
-VersionCreationReason*:
-What is the reason for this report/record version being created (revision reason or reason for update/correction) as stated in the version history or revision notes?
-
-Keywords: revision history, version history, change log, document control, reason for change, amended, updated, revised, reissued, erratum, correction, supersedes, superseded, replaces previous, issue, reissue, update note, revision notes
-
-VerticalMeasurements*:
-What vertical measurement datums are given for the well (e.g., KB/RT/GL/MSL) and what are their stated elevations or offsets (such as KB above GL or RT above MSL)?
-
-Keywords: vertical reference, depth datum, reference datum, datum elevation, reference elevation, elevation, offset, above, below, KB elevation, Kelly Bushing, RT elevation, Rotary Table, DF, drill floor, RKB, GL, ground level, MSL, mean sea level, rig datum, wellhead elevation, WH, seabed elevation, datum conversion, datum tie
-
-FacilityDescription*:
-What is the facility or wellsite description for this well (including any site/pad or platform description and surface facilities/wellhead arrangement)?
-
-Keywords: surface location, drill site, wellsite, pad, lease, platform, wellhead, Xmas tree, cellars, conductor, access road, helicopter access, campsite, utilities, water supply, power, communications, tie-in, flowline, manifold, separator, production facilities, infrastructure, site layout
-
-KickOffWellbore*:
-For this wellbore, what is the kickoff (KO) / parent wellbore it was sidetracked from (e.g., “sidetracked from” or “kicked off from”)?
-
-Keywords: sidetrack parent, parent hole, original hole, wellbore name, hole section, re-entry, whipstock, window milled, sidetrack, ST, KO point, kickoff point, departure point, sidetrack number, branch wellbore
-
-WellboreHydrocarbonType*:
-What hydrocarbon type/produced fluid does this wellbore contain or test (e.g., oil, gas, condensate), as stated in the completion or test results?
-
-Keywords: HC, hydrocarbons, oil, gas, condensate, wet gas, dry gas, gas-condensate, product, fluid, produced, flowed, recovered, shows, oil show, gas show, DST, drill stem test, production test, well test, flow test, completion report, well data summary
-
-SpatialLocation.CoordinateQualityCheckPerformedBy*:
-Who performed the coordinate/location QA/QC (coordinate verification/check) for this well’s surface location (e.g., checked/verified/reviewed by)?
-
-Keywords: coordinate QAQC, QA/QC, QC, verification, verify, checked by, reviewed by, validated by, auditor, audit, survey QC, survey verification, survey check, GIS, geodetic, NZGD2000, easting, northing, latitude, longitude, wellhead location, surface location, location survey, as-built survey
-
-UWI*:
-What is the well’s UWI or Unique Well Identifier (i.e., official well number/reference number) as stated in this report?
-
-Keywords: well no., well number, well identifier, well ID, reference number, permit no., permit number, licence number, license number, well licence, NZP&M, New Zealand Petroleum & Minerals, Petroleum permit, PPL, PML, API no., API number
-
-WasBusinessInterestFinancialNonOperated*:
-Does this report state the well interest is non-operated/non-operating (a financial interest only, i.e., not the operator)?
-
-Keywords: financial interest, non-operating, non operated, non-operator, not operator, operator status, operator, operated, working interest, WI, participant, joint venture, JV, carried interest, interest type
-
-NameAliases*:
-What alias/aka (also known as) names does this well or wellbore have, including any previous/alternate names it was formerly reported under?
-
-Keywords: formerly, previous name, renamed, name change, alternate name, alternative name, other names, known as, reported as, well designation, operator name, company name, internal name, NZ well number, well number, permit well number, well identifier, registry name, spelling variant, sidetrack name
-
-ShowProductTypeID*:
-What is the well’s product/produced fluid type (e.g., oil, gas, condensate), or the producer/injector classification stated in this well completion or test report?
-
-Keywords: product type ID, product code, produced fluid, production type, well type, well classification, hydrocarbon type, produced hydrocarbons, primary product, target fluid, producer, injector, water injector, gas injector, CO2 injection, production stream, oil, gas, condensate, gas-condensate, NGL, LPG, water producer
-
-ProjectedBottomHoleLocation.CoordinateQualityCheckPerformedBy*:
-Who performed the coordinate QA/QC (checked/verified by) for the projected bottom-hole location (PBHL) or bottom-hole coordinates in this well report?
-
-Keywords: PBHL, projected bottom hole location, BHL, bottom hole location, coordinates, grid coordinates, easting, northing, NZTM, NZMG, UTM, latitude, longitude, wellhead to PBHL, planned wellpath, trajectory, deviation survey, directional survey, survey program, MWD survey, gyro, multishot, final survey, survey report, survey check, QA, QC, verification, validation, review, sign-off, approved by
-
-GeoContexts*:
-What geological context is given for this well (e.g., basin or sub-basin, field/structure or prospect, and any play/fairway or permit area context)?
-
-Keywords: geological setting, regional geology, tectonic setting, basin, sub-basin, depocentre, play, fairway, trend, province, field, structure, prospect, lead, area, block, permit, permit area, licence, concession, PEP, PPL, PML, exploration permit
-
-WasBusinessInterestTechnical*:
-In this well report, is the business/working interest classified as a technical interest (operator/technical) rather than a non-technical/financial interest?
-
-Keywords: interest type, working interest, WI, participating interest, PI, equity, ownership, beneficial interest, licence interest, permit interest, farm-in, farmout, partner, joint venture, JV, operator, non-operator, participant, party role, percentage interest
-
-VirtualProperties.DefaultLocation.SpatialParameterTypeID*:
-What coordinate system/projection and datum are the well’s default location coordinates reported in (e.g., NZTM2000/NZGD2000, UTM, WGS84, Lat/Long vs Easting/Northing)?
-
-Keywords: CRS, SRS, spatial reference, coordinate reference, projection, horizontal datum, geodetic datum, survey datum, NZGD2000, NZGD49, WGS84, NZTM, NZTM2000, NZ Transverse Mercator, MGNZ, UTM, zone, latitude, longitude, lat/long, easting, northing, E/N, grid reference
-
-ProjectedBottomHoleLocation.SpatialParameterTypeID*:
-What coordinate system / map projection is used for the projected bottom-hole location (e.g., NZTM/NZTM2000 grid easting/northing or latitude/longitude, and stated datum/CRS)?
-
-Keywords: bottom hole location, BHL, projected BHL, BH coordinates, coordinate type, coordinate system, CRS, coordinate reference system, spatial reference, projection, map projection, grid, grid reference, easting, northing, NZTM, NZTM2000, NZMG, UTM, lat long, latitude, longitude, WGS84, NZGD2000, datum, geodetic datum
-
-ResourceHomeRegionID*:
-What is the well’s home region/operating region identifier (region ID or area code) as stated in this report?
-
-Keywords: resource home region id, region identifier, region code, area identifier, area code, asset region, operating region, business unit, BU, asset hierarchy, asset code, basin, field area, permit area, licence area, PML, PPL, PRC, block, concession
-
-SpatialLocation.QualitativeSpatialAccuracyTypeID*:
-What is the stated location/positional accuracy or accuracy class for the well coordinates (e.g., surveyed, estimated/approximate, or a survey grade)?
-
-Keywords: positional accuracy, coordinate accuracy, spatial accuracy, location quality, accuracy class, survey class, survey grade, survey quality, confidence level, reliability, uncertainty, estimated location, approximate location, GIS accuracy, grid reference accuracy
-
-WellboreReasonID*:
-What is the wellbore reason/purpose or well objective stated for this wellbore (e.g., exploration, appraisal, development/production, injection, sidetrack or re-entry)?
-
-Keywords: wellbore purpose, reason for drilling, objective, well intent, well type, classification, intended use, exploration, appraisal, development, production, injector, injection, disposal, water injection, gas injection, observation, monitoring, pilot hole, slimhole, sidetrack, sidetrack objective, re-entry, re-entry objective, relief well, reason code, objective code
-
-TechnicalAssurances*:
-What technical assurance/peer review (TA) or QA/QC sign-off is recorded for this well report (e.g., checked/reviewed/approved by, with dates or comments)?
-
-Keywords: technical assurance, TA, technical review, peer review, QA/QC, quality assurance, quality control, checked by, reviewed by, verified by, approved by, authorised by, endorsed by, sign-off, signed off, certification, validated, assurance statement, competent person
-
-WellboreTrajectoryTypeID*:
-What is the wellbore trajectory type or well profile for this well (e.g., vertical/straight, deviated/directional, horizontal, ERD, sidetrack)?
-
-Keywords: trajectory, well path, borehole path, deviation, directional drilling, inclination, azimuth, survey, MWD, gyro, build rate, turn rate, dogleg severity, DLS, tangent section, kick-off point, KOP, build and hold, J curve, S curve, horizontal section, extended reach, ERD, sidetrack, ST, multilateral, ML
-
-WasBusinessInterestFinancialOperated*:
-Is this well financially operated (i.e., who is the operator of record / financially responsible operator) as stated in the report?
-
-Keywords: operator, operated by, operated for, operator of record, financial operator, financially responsible, operating interest, working interest, WI, JV operator, joint venture, permit operator, licence operator, company/operator, ownership, interest, equity, participating interest
-
-BlockName*:
-What is the block name (licence block / permit area) for this well as stated in the well data summary or header information?
-
-Keywords: block, licence block, license block, permit block, permit area, licence area, license area, acreage, exploration block, production block, petroleum permit, PEP, PPL, PMP, permit number, licence no., license no., contract area
-
-SecondaryProductTypeID*:
-What is the secondary product type for this well (e.g., associated gas, condensate/NGL, or produced water) as stated in the completion/production summary?
-
-Keywords: secondary product, secondary produced product, by-product, co-product, associated gas, associated oil, condensate, NGL, LPG, C5+, produced water, formation water, brine, produced fluids, products, production stream, GOR, CGR, oil and gas shows, hydrocarbons
-
-SpatialLocation.QuantitativeAccuracyBandID*:
-What location accuracy band/class is given for the well’s surface coordinates (positional/horizontal accuracy or coordinate uncertainty, e.g., ±m or an accuracy class) in this report?
-
-Keywords: surface location, wellhead coordinates, coordinate quality, position quality, spatial quality, accuracy code, accuracy rating, uncertainty (m), error radius, CEP, 2-sigma, confidence level, survey method, GPS, GNSS, differential GPS, DGPS, topographic map, NZTM, NZMG, WGS84, latitude, longitude, easting, northing
-
-VirtualProperties.DefaultLocation.Wgs84Coordinates*:
-What are the well’s surface/wellhead coordinates (latitude/longitude, WGS84 or GPS lat/long) given in this report?
-
-Keywords: location, well location, wellhead location, surface location, coordinates, co-ordinates, lat, latitude, lon, longitude, lat/long, lat-long, lat/lon, GPS, easting, northing, NZTM, NZTM2000, NZGD2000, NZMG, grid reference, map reference, UTM, datum, geodetic datum, map coordinates
-
-TrajectoryTypeID*:
-What is the wellbore trajectory type or well path profile for this well (e.g., vertical/straight hole, deviated/directional, horizontal, or sidetrack)?
-
-Keywords: trajectory, well path, wellbore path, deviation survey, survey program, inclination, azimuth, dogleg, DLS, KOP, kickoff point, build, hold, drop, J profile, S profile, high angle, lateral, motherbore, mainbore, pilot hole, sidetrack, ST

@@ -1,0 +1,25 @@
+{
+    "data": {
+      "FacilityName": "Kauhauroa-4B",
+      "SpatialLocation.Wgs84Coordinates": "-38.9504758, 174.4484732",
+      "WellboreSituation": "Offshore",
+      "FacilityEvents.SpudDate": "2001-04-29",
+      "CountryName": null,
+      "GeoContexts.BasinID": "EAST COAST BASIN",
+      "FieldName": "Kauhauroa",
+      "DefaultVerticalMeasurementID": "RT",
+      "CurrentOperator": null,
+      "VerticalMeasurements.TotalDepthMD": "2045.2 m",
+      "FacilityEvents.CompletionDate": "2001-06-03",
+      "WellborePhase": "Explore",
+      "WellboreTrajectoryType": "Vertical",
+      "VirtualProperties.DefaultName": "Kauhauroa-4B",
+      "RegionName": null,
+      "ProspectName": "Kauhauroa prospect (Kauhauroa structure).",
+      "ExistenceKind": "Actual",
+      "SpatialLocation.SpatialGeometryTypeID": null,
+      "FormationNameAtTotalDepth": " Weber Formation",
+      "WellboreStatus": "The well was shut in for pressure build-up/monitoring (i.e., shut-in).",
+      "WasBusinessInterestFinancialOperated": "Yes"
+    }
+  }

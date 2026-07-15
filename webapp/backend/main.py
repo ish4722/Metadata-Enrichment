@@ -72,8 +72,7 @@ def _ndjson(events: Iterator[Dict[str, Any]]) -> StreamingResponse:
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
 
-def _load_matched(doc_id: str) -> Optional[Dict[str, Any]]:
-    path = docs.matched_path(doc_id)
+def _load_json(path: Optional[str]) -> Optional[Dict[str, Any]]:
     if not path:
         return None
     try:
@@ -81,6 +80,20 @@ def _load_matched(doc_id: str) -> Optional[Dict[str, Any]]:
             return json.load(f)
     except Exception:
         return None
+
+
+def _load_matched(doc_id: str) -> Optional[Dict[str, Any]]:
+    return _load_json(docs.matched_path(doc_id))
+
+
+def _load_new_truth(doc_id: str) -> Optional[Dict[str, Any]]:
+    """The incomplete record to enrich, from ``new_checking_truth/<id>.json``."""
+    return _load_json(docs.new_truth_path(doc_id))
+
+
+def _load_enriched_gt(doc_id: str) -> Optional[Dict[str, Any]]:
+    """The filled ground truth, from ``enriched_ground_truth/<id>.json``."""
+    return _load_json(docs.enriched_gt_path(doc_id))
 
 
 # ── metadata endpoints ──────────────────────────────────────────────────────
@@ -236,6 +249,7 @@ async def query(request: Request) -> StreamingResponse:
         "hybrid_alpha": body.get("hybrid_alpha"),
         "use_reranker": body.get("use_reranker"),
         "top_k": body.get("top_k"),
+        "verify": body.get("verify"),
     }
 
     return _ndjson(ENGINE.run_query(
@@ -249,10 +263,63 @@ async def query(request: Request) -> StreamingResponse:
     ))
 
 
+@app.post("/api/reverify")
+async def reverify(request: Request) -> StreamingResponse:
+    """Re-run only the CoVe verification against a user-accepted answer."""
+    body = await request.json()
+    doc_id = body.get("doc_id")
+    if not doc_id:
+        raise HTTPException(status_code=400, detail="doc_id is required.")
+    if not docs.datalab_path(doc_id):
+        raise HTTPException(status_code=404, detail=f"No datalab output for '{doc_id}'.")
+
+    answer = (body.get("answer") or "").strip()
+    if not answer:
+        raise HTTPException(status_code=400, detail="An answer to re-verify is required.")
+
+    question = (body.get("question") or "").strip()
+    # Mirror /api/query: inject the document's ground-truth well name into the
+    # question so verification reasons about the specific well.
+    matched = _load_matched(doc_id)
+    if matched is not None and question:
+        question = rag_evaluation.inject_name(question, rag_evaluation.resolve_well_name(matched))
+    if not question:
+        raise HTTPException(status_code=400, detail="A question is required.")
+
+    overrides = {
+        "embedding_model": body.get("embedding_model"),
+        "retrieval_mode": body.get("retrieval_mode"),
+        "hybrid_alpha": body.get("hybrid_alpha"),
+        "use_reranker": body.get("use_reranker"),
+        "top_k": body.get("top_k"),
+        "verify": True,
+    }
+
+    return _ndjson(ENGINE.run_verification(
+        doc_id=doc_id, question=question, answer=answer, overrides=overrides,
+    ))
+
+
 # ── metadata enrichment ──────────────────────────────────────────────────────
 @app.get("/api/enrichment/documents")
 def enrichment_documents() -> Dict[str, Any]:
     return {"documents": docs.list_documents()}
+
+
+@app.get("/api/enrichment/source/{doc_id}")
+def enrichment_source(doc_id: str) -> JSONResponse:
+    """The incomplete record to enrich, from ``new_checking_truth/<id>.json``.
+
+    Lets the Metadata Enrichment UI auto-load the record to enrich (and enable
+    the run) without a manual upload.
+    """
+    record = _load_new_truth(doc_id)
+    if not isinstance(record, dict):
+        raise HTTPException(
+            status_code=404,
+            detail=f"No new_checking_truth record on file for '{doc_id}'.",
+        )
+    return JSONResponse(record)
 
 
 @app.post("/api/enrichment/run")
@@ -265,16 +332,25 @@ async def enrichment_run(request: Request) -> StreamingResponse:
     if not datalab:
         raise HTTPException(status_code=404, detail=f"No datalab output for '{doc_id}'.")
 
-    # The incomplete structured JSON is uploaded and sent inline; fall back to the
-    # on-disk matched_json/<id>.json when the client did not provide one.
-    record = body.get("structured")
+    # Enrich the record from new_checking_truth/<id>.json. Fall back to an
+    # inline-uploaded record, then matched_json, when it is absent.
+    record = _load_new_truth(doc_id)
+    if not isinstance(record, dict):
+        record = body.get("structured")
     if not isinstance(record, dict):
         record = _load_matched(doc_id)
     if not isinstance(record, dict):
         raise HTTPException(
             status_code=400,
-            detail="A structured JSON to enrich is required (upload one or add matched_json).",
+            detail="A structured JSON to enrich is required (add new_checking_truth or upload one).",
         )
+
+    # Real-world mode: there is no separate "correct" answer key, so the
+    # new_checking_truth record is its OWN ground truth. Non-null fields are
+    # validated against their existing value; a high-confidence disagreement
+    # updates (overwrites) the ground truth. Passing None makes run_enrichment
+    # use the input record as the ground-truth source.
+    ground_truth_record = None
 
     overrides = {
         "embedding_model": body.get("embedding_model"),
@@ -294,6 +370,7 @@ async def enrichment_run(request: Request) -> StreamingResponse:
         record=record,
         overrides=overrides,
         max_attributes=max_attributes,
+        ground_truth_record=ground_truth_record,
     ))
 
 

@@ -16,11 +16,12 @@ from __future__ import annotations
 import copy
 import datetime
 import os
+import queue
 import re
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import rag_evaluation
 
@@ -30,6 +31,7 @@ from rag.inference.context_builder import build_context
 from rag.inference.hierarchical_answer import answer_with_hierarchical_context
 from rag.inference.prompt import inject_facility_name, make_prompt, parse_generator_json
 from rag.inference.reranker import get_reranker, rerank
+from rag.inference import verification as V
 
 # The query-generation package uses top-level ``from query_generation...`` imports,
 # so its parent (``<repo>/rag``) must be importable (mirrors from_schema.py).
@@ -55,7 +57,7 @@ CONFIDENCE_THRESHOLD = 0.75
 
 # For quick demos we only enrich the first N attributes of the record instead of
 # generating a query for every single field. ``None`` (or <= 0) means no limit.
-DEMO_MAX_ATTRIBUTES = None
+DEMO_MAX_ATTRIBUTES = 7
 
 # Query generation is one independent (network-bound) LLM call per attribute, so we
 # fan them out across a small thread pool instead of calling them one at a time.
@@ -107,12 +109,26 @@ _DATE_FORMATS = [
     "%B %d %Y", "%b %d %Y",
 ]
 
-_DATE_CANDIDATE = re.compile(
+_DATE_PATTERNS = (
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
     r"|[0-9]{1,2}[/.\-][0-9]{1,2}[/.\-][0-9]{2,4}"
     r"|[0-9]{1,2}\s+[A-Za-z]{3,9},?\s+[0-9]{4}"
     r"|[A-Za-z]{3,9}\s+[0-9]{1,2},?\s+[0-9]{4}"
 )
+
+_DATE_CANDIDATE = re.compile(_DATE_PATTERNS)
+
+# Matches when the WHOLE answer is essentially a single date (allowing trailing
+# punctuation) so any date-valued answer can be normalized to YYYY-MM-DD even
+# when the field label does not contain the word "date".
+_DATE_FULL = re.compile(r"^[\s,]*(?:" + _DATE_PATTERNS + r")[\s,.]*$")
+
+
+def _is_date_label(label: str) -> bool:
+    """A field is a date field when it is a known date label or its name
+    contains "date" (covers flat keys like ``FacilityEvents.SpudDate``)."""
+    key = (label or "").strip().lower()
+    return key in _DATE_LABELS or "date" in key
 
 
 # ── conversion / normalization ────────────────────────────────────────────────
@@ -144,8 +160,13 @@ def normalize_value(label: str, text: str) -> Optional[str]:
             lat, lon = coords[0]
             return f"{lat:.5f}, {lon:.5f}"
         return text.strip()
-    if key in _DATE_LABELS:
+    if _is_date_label(label):
         return _normalize_date(text) or text.strip()
+    # Any answer that is essentially a bare date gets normalized to YYYY-MM-DD.
+    if _DATE_FULL.match(text.strip()):
+        norm = _normalize_date(text)
+        if norm:
+            return norm
     return text.strip()
 
 
@@ -164,7 +185,7 @@ def matches_ground_truth(
         is_match, _conf = rag_evaluation.coordinate_verdict(str(gt_value), answer)
         return bool(is_match)
 
-    if key in _DATE_LABELS:
+    if _is_date_label(label):
         gt_norm = _normalize_date(str(gt_value))
         ans_norm = _normalize_date(answer)
         if gt_norm and ans_norm:
@@ -186,16 +207,23 @@ def classify(
     answer: str,
     has_gt: bool,
     matches_gt: Optional[bool],
-    confidence: Optional[float],
+    band: Optional[str],
 ) -> str:
-    """Bucket an attribute result into a dashboard category."""
+    """Bucket an attribute result into a dashboard row category.
+
+    Uses the Chain-of-Verification confidence ``band`` ("high" | "medium" |
+    "low") rather than a raw threshold so the coloring matches the CoVe score
+    shown in the UI.
+    """
     if not available or not answer.strip():
         return "not_found"
     if has_gt:
         return "validated_correct" if matches_gt else "validated_incorrect"
     # Null ground truth -> this is an enrichment we discovered from the document.
-    if confidence is not None and confidence >= CONFIDENCE_THRESHOLD:
+    if band == "high":
         return "enriched_confident"
+    if band == "medium":
+        return "enriched_medium"
     return "enriched_low_conf"
 
 
@@ -382,12 +410,46 @@ def build_enriched_record(
 def _empty_summary() -> Dict[str, int]:
     return {
         "total": 0,
-        "validated_correct": 0,
+        # Dashboard headline metrics (see requirement 5).
+        "validated_correct": 0,   # a) answer matches the ground truth
+        "high_conf_update": 0,    # b) model updated/filled with HIGH confidence
+        "medium_conf_fill": 0,    # c) model filled/updated with MEDIUM confidence
+        "enriched": 0,            # d) ground truth null and the model gave an answer
+        # Supporting detail counts.
         "validated_incorrect": 0,
-        "enriched_confident": 0,
-        "enriched_low_conf": 0,
+        "low_conf": 0,
         "not_found": 0,
     }
+
+
+def _bump_summary(summary: Dict[str, int], event: Dict[str, Any]) -> None:
+    """Increment the (non-exclusive) dashboard metrics for one attribute event."""
+    summary["total"] += 1
+    has_gt = bool(event.get("has_gt"))
+    matches_gt = event.get("matches_gt")
+    available = bool(event.get("available"))
+    value = event.get("value")
+    band = event.get("band")
+    has_answer = available and value is not None and str(value).strip() != ""
+    is_update = bool(event.get("was_null")) or (
+        str(value) != str(event.get("original_value"))
+    )
+
+    if has_gt and matches_gt:
+        summary["validated_correct"] += 1
+    elif has_gt and matches_gt is False:
+        summary["validated_incorrect"] += 1
+
+    if has_answer and is_update:
+        if band == "high":
+            summary["high_conf_update"] += 1
+        elif band == "medium":
+            summary["medium_conf_fill"] += 1
+        elif band == "low":
+            summary["low_conf"] += 1
+
+    if not has_gt and has_answer:
+        summary["enriched"] += 1
 
 
 def _is_empty(value: Any) -> bool:
@@ -422,6 +484,154 @@ def _vm_unit_for_label(label: str, record_data: Dict[str, Any]) -> Optional[str]
     return None
 
 
+# ── Chain-of-Verification (CoVe) confidence for one attribute answer ──────────
+def _noop_emit(_event: Dict[str, Any]) -> None:
+    """Default event sink used when a caller does not want streamed sub-events."""
+
+
+def _cove_verify(
+    *,
+    store: Any,
+    cfg: Any,
+    doc_id: str,
+    reranker: Any,
+    llm: Any,
+    question: str,
+    answer_text: str,
+    verbalized_conf: Optional[float],
+    emit: Callable[[Dict[str, Any]], None] = _noop_emit,
+    index: Optional[int] = None,
+    label: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Run the same CoVe pass the Explorer uses for one answer, streaming steps.
+
+    Plans indirect corroboration checks, retrieves a related fact per check via
+    the shared pipeline, lets the LLM judge each domain-logic rule, aggregates
+    the verdicts into a 0-1 confidence + band, and (when the band is low) asks
+    for a grounded corrected value. Never edits the answer itself. Returns
+    ``{confidence, band, checks, suggestion, cost_usd}``. Chroma reads and the
+    torch reranker are serialized via the module locks (not thread-safe).
+
+    ``emit`` is called with per-step events (planned checks, each check verdict)
+    keyed by ``index`` so the UI can visualise the verification live.
+    """
+    total_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
+
+    def _acc(usage: Dict[str, Any]) -> None:
+        if usage:
+            total_usage["input_tokens"] += int(usage.get("input_tokens", 0) or 0)
+            total_usage["output_tokens"] += int(usage.get("output_tokens", 0) or 0)
+
+    def _one_pass(candidate: str, rnd: int) -> Dict[str, Any]:
+        """Plan -> execute -> aggregate one verification pass for ``candidate``."""
+        # 1. Plan the indirect checks.
+        raw_plan, usage = rag_evaluation.invoke_llm_with_usage(
+            llm, V.build_plan_prompt(question, candidate, None)
+        )
+        _acc(usage)
+        checks = V.parse_plan(raw_plan, cfg.verify_num_questions)
+        emit({"stage": "attribute", "status": "cove_plan", "index": index, "label": label,
+              "round": rnd, "answer": candidate,
+              "checks": [{"question": c["question"], "rule": c["rule"],
+                          "relevance": c["relevance"]} for c in checks]})
+
+        # 2. Execute each check (retrieve related fact -> LLM judges the rule).
+        results: List[Dict[str, Any]] = []
+        seen_context: List[Dict[str, Any]] = []
+        seen_keys: set = set()
+        for i, chk in enumerate(checks):
+            emit({"stage": "attribute", "status": "cove_check", "index": index, "label": label,
+                  "round": rnd, "i": i, "total": len(checks), "question": chk["question"],
+                  "relevance": chk["relevance"]})
+            with _RETRIEVE_LOCK:
+                matches = ENGINE._retrieve(store, cfg, doc_id, chk["question"])
+            if reranker is not None and matches:
+                with _RERANK_LOCK:
+                    matches = rerank(chk["question"], matches, cfg.reranker_model,
+                                     top_k=cfg.rerank_top_k)
+            elif matches:
+                matches = matches[: cfg.rerank_top_k]
+            with _RETRIEVE_LOCK:
+                corpus = ENGINE._corpus_for_context(store, cfg, matches)
+            ctx_items, _ = build_context(matches, corpus, context_mode=cfg.context_mode)
+            for item in ctx_items:
+                key = (item.get("source"), item.get("page"), (item.get("text") or "")[:80])
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    seen_context.append(item)
+            raw_judge, usage = rag_evaluation.invoke_llm_with_usage(
+                llm, V.build_judge_prompt(chk, ctx_items, candidate)
+            )
+            _acc(usage)
+            result = {**chk, **V.parse_judge(raw_judge)}
+            results.append(result)
+            emit({"stage": "attribute", "status": "cove_check_done", "index": index,
+                  "label": label, "round": rnd, "i": i, "total": len(checks),
+                  "check": result})
+
+        # 3. Aggregate into a single confidence score + band.
+        agg = V.aggregate(results, verbalized_conf)
+        return {"agg": agg, "results": results, "seen_context": seen_context}
+
+    # Verify the model's answer; while the band is LOW, accept the grounded
+    # correction the verifier proposes and RE-VERIFY it, recomputing confidence
+    # for the new value. Capped at ``max_verify_rounds`` correction rounds so a
+    # persistently-low answer cannot loop forever.
+    max_rounds = int(getattr(cfg, "max_verify_rounds", 3) or 3)
+    current_answer = answer_text
+    auto_corrected = False
+    suggestion: Optional[Dict[str, Any]] = None
+
+    passed = _one_pass(current_answer, 0)
+    agg, results, seen_context = passed["agg"], passed["results"], passed["seen_context"]
+
+    corrections = 0
+    while agg["band"] == V.SUGGEST_BAND and corrections < max_rounds:
+        # Propose a corrected answer grounded in the excerpts we just verified.
+        proposal = None
+        try:
+            raw_sug, usage = rag_evaluation.invoke_llm_with_usage(
+                llm, V.build_suggestion_prompt(question, current_answer, results,
+                                               seen_context[:12])
+            )
+            _acc(usage)
+            proposal = V.parse_suggestion(raw_sug)
+        except Exception:  # noqa: BLE001
+            proposal = None
+        if not proposal or not proposal.get("suggested_answer"):
+            break
+        new_answer = str(proposal["suggested_answer"]).strip()
+        # Stop if the model keeps suggesting the same value (no progress).
+        if new_answer.lower() == current_answer.strip().lower():
+            suggestion = proposal
+            break
+
+        # Accept the recommendation and re-verify it.
+        corrections += 1
+        current_answer = new_answer
+        auto_corrected = True
+        suggestion = proposal
+        emit({"stage": "attribute", "status": "cove_retry", "index": index, "label": label,
+              "round": corrections, "answer": current_answer,
+              "reason": proposal.get("reason", "")})
+        passed = _one_pass(current_answer, corrections)
+        agg, results, seen_context = passed["agg"], passed["results"], passed["seen_context"]
+
+    cost = rag_evaluation.token_cost_usd(
+        total_usage.get("input_tokens", 0), total_usage.get("output_tokens", 0)
+    )
+    return {
+        "confidence": agg["confidence"],
+        "band": agg["band"],
+        "checks": results,
+        "suggestion": suggestion,
+        "final_answer": current_answer,
+        "auto_corrected": auto_corrected,
+        "rounds": corrections,
+        "cost_usd": cost,
+    }
+
+
 # ── main streamed operation ───────────────────────────────────────────────────
 def run_enrichment(
     *,
@@ -433,6 +643,7 @@ def run_enrichment(
     persist_queries: bool = False,
     queries_path: Optional[str] = None,
     guaranteed_core: bool = False,
+    ground_truth_record: Optional[Dict[str, Any]] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Embed the PDF, generate a query per record field, answer/validate each,
     and stream events; fills null fields and overwrites prefilled fields on a
@@ -456,6 +667,12 @@ def run_enrichment(
 
     cfg = ENGINE.make_config(overrides)
     record_data = rag_evaluation._data_root(record)
+    # The record being enriched comes from ``new_checking_truth`` (may have nulls
+    # / stale values). Validation compares the model's answers against a separate
+    # ``enriched_ground_truth`` record when one is supplied; otherwise the input
+    # record doubles as its own ground truth (legacy behavior).
+    gt_source = ground_truth_record if isinstance(ground_truth_record, dict) else record
+    gt_root = rag_evaluation._data_root(gt_source)
     attrs: List[ExtractedAttribute] = extract_attributes(record)
     if guaranteed_core:
         # Always include the top-12 core attributes (injecting canonical-keyed
@@ -550,7 +767,8 @@ def run_enrichment(
         #    torch reranker are serialized via module-level locks (they are fast and
         #    not thread-safe). Returns the fully-built "done" event for one field.
         def _process_attribute(
-            idx: int, attr: ExtractedAttribute, query: str, keywords: str
+            idx: int, attr: ExtractedAttribute, query: str, keywords: str,
+            emit: Callable[[Dict[str, Any]], None] = _noop_emit,
         ) -> Dict[str, Any]:
             label = attr.label
             raw_name = attr.raw_name
@@ -591,21 +809,35 @@ def run_enrichment(
                 question = rag_evaluation.inject_name(query, well_name) if well_name else query
                 retrieval_query = f"{question} {keywords}".strip() if keywords else question
 
+            # Step 1 - retrieval.
+            emit({"stage": "attribute", "status": "retrieve", "index": idx,
+                  "label": label, "query": retrieval_query})
             with _RETRIEVE_LOCK:
-                matches = ENGINE._retrieve(store, cfg, doc_id, retrieval_query)
+                retrieved = ENGINE._retrieve(store, cfg, doc_id, retrieval_query)
+            retrieved_payload = [_chunk_payload(c, s) for c, s in retrieved]
+            emit({"stage": "attribute", "status": "retrieved", "index": idx,
+                  "label": label, "count": len(retrieved), "chunks": retrieved_payload})
 
+            # Step 2 - reranking (cross-encoder shortlist).
+            matches = retrieved
             if cfg.use_reranker and matches and reranker is not None:
+                emit({"stage": "attribute", "status": "rerank", "index": idx, "label": label})
                 with _RERANK_LOCK:
                     matches = rerank(retrieval_query, matches, cfg.reranker_model,
                                      top_k=cfg.rerank_top_k)
             elif matches:
                 matches = matches[: cfg.rerank_top_k]
+            reranked_payload = [_chunk_payload(c, s) for c, s in matches]
+            emit({"stage": "attribute", "status": "reranked", "index": idx,
+                  "label": label, "count": len(matches), "chunks": reranked_payload})
 
             with _RETRIEVE_LOCK:
                 corpus = ENGINE._corpus_for_context(store, cfg, matches)
             context_items, _raw_text = build_context(matches, corpus,
                                                       context_mode=cfg.context_mode)
 
+            # Step 3 - LLM answer.
+            emit({"stage": "attribute", "status": "generate", "index": idx, "label": label})
             raw_answer = ""
             usage: Dict[str, Any] = {}
             if llm is not None and matches:
@@ -627,57 +859,98 @@ def run_enrichment(
             parsed = parse_generator_json(raw_answer)
             answer_text = parsed["answer"]
             available = parsed["available"]
-            confidence = parsed["confidence"]
+            verbalized_conf = parsed["confidence"]
             source_pages = parsed["source_pages"]
+            emit({"stage": "attribute", "status": "answered", "index": idx, "label": label,
+                  "answer": answer_text, "available": available,
+                  "verbalized_confidence": verbalized_conf})
 
-            normalized = normalize_value(label, answer_text) if available else None
-
-            # Validate prefilled fields against their existing value (the record's
-            # own value acts as the ground truth). Known OSDU labels use the
-            # coordinate/date comparators; unknown fields use a token containment.
-            has_gt = not was_null
+            # Ground truth for validation: the separate enriched_ground_truth
+            # record when provided (``gt_source``), else the input record. Known
+            # OSDU labels use the pipeline extractor (nested/object fields);
+            # unknown fields read the raw key. ``was_null`` / ``existing_value``
+            # above always reflect the INPUT record being enriched.
             gt_value: Any = None
             gt_tokens: List[str] = []
+            if gt_key in rag_evaluation.GROUND_TRUTH_EXTRACTORS:
+                g = rag_evaluation.extract_ground_truth(label, gt_source)
+                if g.get("value") is not None:
+                    gt_value = g.get("value")
+                    gt_tokens = g.get("tokens") or [str(gt_value)]
+            # Fall back to a direct key lookup (handles the flat dotted-key format
+            # of new_checking_truth / enriched_ground_truth, where the extractor's
+            # nested paths do not apply).
+            if gt_value is None and gt_root is not None:
+                raw_gt = gt_root.get(raw_name)
+                if not _is_empty(raw_gt):
+                    gt_value = raw_gt
+                    gt_tokens = [str(raw_gt)]
+            has_gt = gt_value is not None
             matches_gt: Optional[bool] = None
-            if has_gt:
-                key = (label or "").strip().lower()
-                if key in rag_evaluation.GROUND_TRUTH_EXTRACTORS:
-                    g = rag_evaluation.extract_ground_truth(label, record)
-                    gt_value = g.get("value") if g.get("value") is not None else existing_value
-                    gt_tokens = g.get("tokens") or [str(existing_value)]
-                else:
-                    gt_value = existing_value
-                    gt_tokens = [str(existing_value)]
-                if available and answer_text.strip():
+            if has_gt and available and answer_text.strip():
+                matches_gt = matches_ground_truth(label, gt_value, gt_tokens, answer_text)
+
+            # Chain-of-Verification confidence (same method as the RAG Explorer):
+            # plan indirect checks, corroborate related facts + domain rules, and
+            # aggregate into a 0-1 confidence + band. Overrides the model's own
+            # verbalized confidence when it runs.
+            confidence = verbalized_conf
+            band: Optional[str] = None
+            cove: Optional[Dict[str, Any]] = None
+            if cfg.verify_enabled and llm is not None and available and answer_text.strip():
+                emit({"stage": "attribute", "status": "verify", "index": idx, "label": label})
+                try:
+                    cove = _cove_verify(
+                        store=store, cfg=cfg, doc_id=doc_id, reranker=reranker,
+                        llm=llm, question=question, answer_text=answer_text,
+                        verbalized_conf=verbalized_conf, emit=emit, index=idx, label=label,
+                    )
+                    confidence = cove["confidence"]
+                    band = cove["band"]
+                except Exception:  # noqa: BLE001
+                    cove = None
+
+            # Requirement 3: when the CoVe confidence was LOW, the verifier has
+            # already looped (up to cfg.max_verify_rounds) accepting its own
+            # grounded recommendation and re-scoring it. Adopt its final answer;
+            # ``confidence``/``band`` above already reflect that re-verification.
+            auto_corrected = False
+            suggestion = cove.get("suggestion") if cove else None
+            if cove and cove.get("auto_corrected") and cove.get("final_answer"):
+                answer_text = str(cove["final_answer"]).strip()
+                auto_corrected = True
+                if has_gt and answer_text:
                     matches_gt = matches_ground_truth(label, gt_value, gt_tokens, answer_text)
 
-            category = classify(available=available, answer=answer_text,
-                                has_gt=has_gt, matches_gt=matches_gt,
-                                confidence=confidence)
+            normalized = normalize_value(label, answer_text) if available else None
 
             proposed = None
             if available and answer_text.strip():
                 proposed = normalized or answer_text.strip()
 
-            # Auto write-back: fill nulls; overwrite a prefilled field only when we
-            # disagree with high confidence. Human verdicts are applied client-side.
+            category = classify(available=available, answer=answer_text,
+                                has_gt=has_gt, matches_gt=matches_gt, band=band)
+
+            # Auto write-back: fill nulls; take an auto-accepted low-confidence
+            # correction; and overwrite a prefilled field on a high-confidence
+            # disagreement. Human verdicts/edits are applied client-side.
             auto_write = False
             if proposed is not None:
-                if was_null:
+                if was_null or auto_corrected:
                     auto_write = True
-                elif (matches_gt is False and confidence is not None
-                      and confidence >= CONFIDENCE_THRESHOLD):
+                elif matches_gt is False and band == "high":
                     auto_write = True
 
-            chunks_payload = [_chunk_payload(c, s) for c, s in matches]
+            chunks_payload = reranked_payload
             try:
                 pages = highlights_for_matches(datalab_path, matches)
             except Exception:  # noqa: BLE001
                 pages = []
 
-            attr_cost = rag_evaluation.token_cost_usd(
+            gen_cost = rag_evaluation.token_cost_usd(
                 usage.get("input_tokens", 0), usage.get("output_tokens", 0)
             ) if usage else 0.0
+            attr_cost = gen_cost + (cove["cost_usd"] if cove else 0.0)
 
             event = {
                 "stage": "attribute", "status": "done", "index": idx, "label": label,
@@ -686,17 +959,26 @@ def run_enrichment(
                 "answer": answer_text,
                 "available": available,
                 "confidence": confidence,
+                "verbalized_confidence": verbalized_conf,
+                "band": band,
+                "cove_checks": (cove["checks"] if cove else []),
+                "cove_suggestion": suggestion,
+                "cove_rounds": (cove.get("rounds", 0) if cove else 0),
+                "auto_corrected": auto_corrected,
                 "normalized": normalized,
                 "value": proposed,
                 "source_pages": source_pages,
                 "original_value": existing_value,
-                "ground_truth": existing_value,
+                "ground_truth": gt_value,
                 "was_null": was_null,
                 "has_gt": has_gt,
                 "matches_gt": matches_gt,
                 "auto_write": auto_write,
                 "category": category,
+                "retrieval_query": retrieval_query,
                 "chunks": chunks_payload,
+                "retrieved_chunks": retrieved_payload,
+                "reranked_chunks": reranked_payload,
                 "pages": pages,
                 "usage": usage,
                 "cost_usd": attr_cost,
@@ -721,17 +1003,41 @@ def run_enrichment(
         yield {"stage": "answers", "status": "start", "count": len(specs)}
         answer_workers = max(1, min(ANSWER_WORKERS, len(specs))) if specs else 1
         results_by_idx: Dict[int, Dict[str, Any]] = {}
+
+        # Each worker streams its per-step events (retrieve -> rerank -> generate
+        # -> verify/CoVe) onto a thread-safe queue so the UI can visualise every
+        # query's full pipeline live; the main thread drains the queue and yields.
+        ev_q: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+
+        def _worker(i: int, spec: Tuple[ExtractedAttribute, str, str]) -> None:
+            try:
+                out = _process_attribute(i, spec[0], spec[1], spec[2], ev_q.put)
+                ev_q.put({"_final": out})
+            except Exception as exc:  # noqa: BLE001
+                ev_q.put({"_final": {
+                    "idx": i,
+                    "event": {"stage": "attribute", "status": "done", "index": i,
+                              "label": spec[0].label, "raw_name": spec[0].raw_name,
+                              "available": False, "value": None, "category": "not_found",
+                              "error": str(exc)},
+                    "result": {"raw_name": spec[0].raw_name, "value": None, "auto_write": False},
+                    "category": "not_found",
+                }})
+
         with ThreadPoolExecutor(max_workers=answer_workers) as pool:
-            fut_to_idx = {
-                pool.submit(_process_attribute, i, spec[0], spec[1], spec[2]): i
-                for i, spec in enumerate(specs)
-            }
-            for fut in as_completed(fut_to_idx):
-                out = fut.result()
-                results_by_idx[out["idx"]] = out["result"]
-                summary[out["category"]] += 1
-                summary["total"] += 1
-                yield out["event"]
+            for i, spec in enumerate(specs):
+                pool.submit(_worker, i, spec)
+            finals = 0
+            while finals < len(specs):
+                item = ev_q.get()
+                final = item.get("_final")
+                if final is not None:
+                    results_by_idx[final["idx"]] = final["result"]
+                    _bump_summary(summary, final["event"])
+                    yield final["event"]
+                    finals += 1
+                else:
+                    yield item
 
         # Assemble the write-back list in original field order (idempotent anyway,
         # since each entry targets a distinct key).

@@ -14,6 +14,8 @@ export default function QueryPanel({
   onAlpha,
   useReranker,
   onReranker,
+  verify,
+  onVerify,
   onRun,
   running,
   disabled,
@@ -93,6 +95,14 @@ export default function QueryPanel({
           <span className="slider" />
         </label>
         <span>Cross-encoder reranker {useReranker ? "ON" : "OFF"}</span>
+      </div>
+
+      <div className="field toggle-row">
+        <label className="switch">
+          <input type="checkbox" checked={verify} onChange={(e) => onVerify(e.target.checked)} />
+          <span className="slider" />
+        </label>
+        <span>Confidence verification (CoVe) {verify ? "ON" : "OFF"}</span>
       </div>
 
       <button className="btn primary" onClick={onRun} disabled={disabled || running}>

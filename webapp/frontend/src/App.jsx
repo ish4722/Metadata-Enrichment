@@ -16,9 +16,56 @@ const STAGES_RESET = {
   retrieve: "pending",
   rerank: "pending",
   llm: "pending",
+  verify: "pending",
   validate: "pending",
   highlights: "pending",
 };
+
+// Floating light/dark switch. Persists to localStorage and toggles the
+// `data-theme` attribute on <html>, which flips the CSS variable palette.
+function ThemeToggle() {
+  const [theme, setTheme] = useState(
+    () => document.documentElement.getAttribute("data-theme") || "dark"
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {
+      /* ignore storage errors */
+    }
+  }, [theme]);
+  const isLight = theme === "light";
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      onClick={() => setTheme(isLight ? "dark" : "light")}
+      title={`Switch to ${isLight ? "dark" : "light"} mode`}
+      aria-label="Toggle color theme"
+    >
+      {isLight ? (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 export default function App() {
   const [view, setView] = useState("home");
@@ -37,6 +84,7 @@ export default function App() {
   const [retrievalMode, setRetrievalMode] = useState("hybrid");
   const [alpha, setAlpha] = useState(0.5);
   const [useReranker, setUseReranker] = useState(true);
+  const [verify, setVerify] = useState(true);
 
   const [running, setRunning] = useState(false);
   const [stages, setStages] = useState(STAGES_RESET);
@@ -45,6 +93,12 @@ export default function App() {
   const [answer, setAnswer] = useState("");
   const [usage, setUsage] = useState(null);
   const [genCost, setGenCost] = useState(null);
+  const [embedCost, setEmbedCost] = useState(null);
+  const [verifyCost, setVerifyCost] = useState(null);
+  const [verifyUsage, setVerifyUsage] = useState(null);
+  const [confidence, setConfidence] = useState(null);
+  const [lastQueryBody, setLastQueryBody] = useState(null);
+  const [reverifying, setReverifying] = useState(false);
   const [validation, setValidation] = useState(null);
   const [highlightPages, setHighlightPages] = useState([]);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
@@ -101,6 +155,10 @@ export default function App() {
     setAnswer("");
     setUsage(null);
     setGenCost(null);
+    setEmbedCost(null);
+    setVerifyCost(null);
+    setVerifyUsage(null);
+    setConfidence(null);
     setValidation(null);
     setHighlightPages([]);
     setSelectedChunkId(null);
@@ -114,6 +172,7 @@ export default function App() {
       retrieval_mode: retrievalMode,
       hybrid_alpha: alpha,
       use_reranker: useReranker,
+      verify: verify,
     };
     if (selectedLabel === CUSTOM) {
       return { ...base, question: customQuery, retrieval_query: customQuery };
@@ -127,6 +186,75 @@ export default function App() {
     setStages((prev) => ({ ...prev, [id]: status }));
   }
 
+  function applyVerifyEvent(ev) {
+    if (ev.status === "start") {
+      setStage("verify", "active");
+      setConfidence({ running: true, planning: true, confidence: null, band: null,
+        checks: [], total: ev.num_questions ?? null, currentIndex: null });
+    } else if (ev.status === "planned") {
+      setStage("verify", "active");
+      setConfidence({
+        running: true, planning: false, confidence: null, band: null,
+        total: ev.count, currentIndex: null,
+        checks: (ev.checks || []).map((c) => ({ ...c, verdict: null })),
+      });
+    } else if (ev.status === "checking") {
+      setConfidence((prev) => (prev ? { ...prev, currentIndex: ev.index } : prev));
+      setStage("verify", "active");
+    } else if (ev.status === "check_done") {
+      setConfidence((prev) => {
+        if (!prev) return prev;
+        const checks = [...(prev.checks || [])];
+        checks[ev.index] = ev.check;
+        return { ...prev, checks };
+      });
+    } else if (ev.status === "done") {
+      setStage("verify", "done");
+      setVerifyCost(ev.cost_usd ?? null);
+      setVerifyUsage(ev.usage ?? null);
+      setConfidence({
+        running: false,
+        confidence: ev.confidence,
+        band: ev.band,
+        checks: ev.checks || [],
+        breakdown: ev.breakdown || null,
+        verbalized_confidence: ev.verbalized_confidence,
+        suggestion: ev.suggestion || null,
+      });
+    } else if (ev.status === "skipped") {
+      setStage("verify", "skipped");
+    } else if (ev.status === "error") {
+      setStage("verify", "error");
+    } else {
+      setStage("verify", "active");
+    }
+  }
+
+  async function handleAcceptSuggestion(suggested) {
+    if (!lastQueryBody || !suggested) return;
+    setReverifying(true);
+    setError("");
+    // The accepted value becomes the displayed answer, then we re-verify it.
+    setAnswer(suggested);
+    setStage("verify", "active");
+    setConfidence({ running: true, planning: true, confidence: null, band: null,
+      checks: [], total: null, currentIndex: null });
+    try {
+      await api.stream("/reverify", { ...lastQueryBody, answer: suggested }, (ev) => {
+        if (ev.stage === "verify") applyVerifyEvent(ev);
+        else if (ev.stage === "error") setError(ev.message);
+      });
+    } catch (e) {
+      setError(`Re-verify failed: ${e.message}`);
+    } finally {
+      setReverifying(false);
+    }
+  }
+
+  function handleRejectSuggestion() {
+    setConfidence((prev) => (prev ? { ...prev, suggestion: null } : prev));
+  }
+
   async function handleRun() {
     const body = buildQueryBody();
     if (!body || (!body.question && !body.label)) {
@@ -134,14 +262,19 @@ export default function App() {
       return;
     }
     resetQueryState();
+    setLastQueryBody(body);
     setRunning(true);
     if (!useReranker) setStage("rerank", "skipped");
+    if (!verify) setStage("verify", "skipped");
 
     try {
       await api.stream("/query", body, (ev) => {
         switch (ev.stage) {
           case "embed":
             setStage("embed", ev.status === "done" ? "done" : "active");
+            if (ev.status === "done" && ev.embedding_cost_usd != null) {
+              setEmbedCost(ev.embedding_cost_usd);
+            }
             break;
           case "retrieve":
             if (ev.status === "done") {
@@ -167,6 +300,9 @@ export default function App() {
               setStage("llm", "skipped");
             } else setStage("llm", "active");
             break;
+          case "verify":
+            applyVerifyEvent(ev);
+            break;
           case "validate":
             if (ev.status === "skipped") {
               setStage("validate", "skipped");
@@ -179,7 +315,6 @@ export default function App() {
                 retrieval_hit: ev.retrieval_hit,
                 token_match: ev.token_match,
                 judge_match: ev.judge_match,
-                judge_confidence: ev.judge_confidence,
               });
             }
             break;
@@ -210,24 +345,38 @@ export default function App() {
 
   if (view === "home") {
     return (
-      <Home
-        onOpenExplorer={() => setView("explorer")}
-        onOpenEnrichment={() => setView("enrichment")}
-        onOpenGroundTruth={() => setView("groundtruth")}
-      />
+      <>
+        <ThemeToggle />
+        <Home
+          onOpenExplorer={() => setView("explorer")}
+          onOpenEnrichment={() => setView("enrichment")}
+          onOpenGroundTruth={() => setView("groundtruth")}
+        />
+      </>
     );
   }
 
   if (view === "enrichment") {
-    return <Enrichment onHome={() => setView("home")} />;
+    return (
+      <>
+        <ThemeToggle />
+        <Enrichment onHome={() => setView("home")} />
+      </>
+    );
   }
 
   if (view === "groundtruth") {
-    return <GroundTruth onHome={() => setView("home")} />;
+    return (
+      <>
+        <ThemeToggle />
+        <GroundTruth onHome={() => setView("home")} />
+      </>
+    );
   }
 
   return (
     <div className="app">
+      <ThemeToggle />
       <header className="topbar">
         <button type="button" className="home-back" onClick={() => setView("home")}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -279,6 +428,8 @@ export default function App() {
             onAlpha={setAlpha}
             useReranker={useReranker}
             onReranker={setUseReranker}
+            verify={verify}
+            onVerify={setVerify}
             onRun={handleRun}
             running={running}
             disabled={!canQuery}
@@ -297,7 +448,16 @@ export default function App() {
 
           <div className="results">
             <div className="results-left">
-              <AnswerValidation answer={answer} usage={usage} genCost={genCost} validation={validation} />
+              <AnswerValidation
+                answer={answer}
+                usage={usage}
+                genCost={genCost}
+                confidence={confidence}
+                validation={validation}
+                reverifying={reverifying}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onRejectSuggestion={handleRejectSuggestion}
+              />
               <ChunksView
                 title="Retrieved chunks"
                 chunks={retrievedChunks}

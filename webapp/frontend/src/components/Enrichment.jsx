@@ -19,6 +19,7 @@ const TIMELINE = [
   { id: "retrieve", label: "Retrieval", hint: "Find the most relevant chunks per attribute" },
   { id: "rerank", label: "Reranking", hint: "Cross-encoder re-scores the shortlist" },
   { id: "generate", label: "Answer", hint: "LLM answers each attribute" },
+  { id: "verify", label: "Verify (CoVe)", hint: "Chain-of-Verification confidence per answer" },
   { id: "output", label: "Output", hint: "Enriched JSON assembled (same file, filled)" },
 ];
 
@@ -62,11 +63,11 @@ const LOOP_STEPS = [
   { id: "retrieve", label: "Retrieve" },
   { id: "rerank", label: "Rerank" },
   { id: "generate", label: "Generate" },
+  { id: "verify", label: "Verify (CoVe)" },
 ];
 
-function LoopProgress({ running, answered, total, currentLabel, activeSub, cost }) {
+function LoopProgress({ running, answered, total, currentLabel, activeSub }) {
   const pctDone = total ? Math.round((answered / total) * 100) : 0;
-  const totalCost = (cost.embedding || 0) + (cost.generation || 0);
   const position = currentLabel && total ? Math.min(answered + 1, total) : answered;
 
   return (
@@ -109,9 +110,6 @@ function LoopProgress({ running, answered, total, currentLabel, activeSub, cost 
 
       <div className="loop-foot">
         <span className="subtle">{pctDone}% complete</span>
-        <span className="cost-chip" title="Estimated LLM + embedding cost for this run">
-          <span className="cost-dot" /> ${totalCost.toFixed(4)}
-        </span>
       </div>
     </div>
   );
@@ -121,15 +119,44 @@ function LoopProgress({ running, answered, total, currentLabel, activeSub, cost 
 const CATEGORY_LABEL = {
   validated_correct: "validated",
   validated_incorrect: "mismatch",
-  enriched_confident: "enriched",
+  updated: "updated",
+  enriched_confident: "enriched (high)",
+  enriched_medium: "enriched (medium)",
   enriched_low_conf: "low confidence",
   not_found: "not found",
 };
 
-function effectiveCategory(attr, verdict) {
+// CoVe confidence -> band (matches the backend BAND_HIGH=0.75 / BAND_MEDIUM=0.5).
+function bandForConfidence(v) {
+  if (v === null || v === undefined) return null;
+  if (v >= 0.75) return "high";
+  if (v >= 0.5) return "medium";
+  return "low";
+}
+
+// A human edit promotes the answer to high confidence (requirement 6).
+function effectiveBand(attr, edit) {
+  if (edit) return "high";
+  return attr.band || bandForConfidence(attr.confidence);
+}
+
+function effectiveValue(attr, edit) {
+  return edit && edit.value != null && edit.value !== "" ? edit.value : attr.value;
+}
+
+function effectiveCategory(attr, verdict, band) {
   if (verdict === "correct") return "validated_correct";
   if (verdict === "incorrect") return "validated_incorrect";
-  return attr.category;
+  if (attr.has_gt) {
+    if (attr.matches_gt) return "validated_correct";
+    // A high-confidence disagreement is a confident UPDATE (blue), not a
+    // red mismatch: the model overwrote the ground truth on purpose.
+    return band === "high" ? "updated" : "validated_incorrect";
+  }
+  if (!attr.available || attr.value == null) return "not_found";
+  if (band === "high") return "enriched_confident";
+  if (band === "medium") return "enriched_medium";
+  return "enriched_low_conf";
 }
 
 function toneForCategory(cat) {
@@ -138,8 +165,12 @@ function toneForCategory(cat) {
       return "good";
     case "validated_incorrect":
       return "bad";
+    case "updated":
+      return "enriched";
     case "enriched_confident":
       return "enriched";
+    case "enriched_medium":
+      return "warn";
     case "enriched_low_conf":
       return "warn";
     default:
@@ -148,36 +179,51 @@ function toneForCategory(cat) {
 }
 
 // ── dashboard ─────────────────────────────────────────────────────────────────
-function pct(n, d) {
-  if (!d) return "0%";
-  return `${Math.round((n / d) * 100)}%`;
-}
-
-function Dashboard({ attributes, humanVerdicts }) {
+function Dashboard({ attributes, humanVerdicts, humanEdits }) {
   const done = attributes.filter((a) => a.status === "done");
-  const total = done.length;
-  const counts = {
-    validated_correct: 0,
-    validated_incorrect: 0,
-    enriched_confident: 0,
-    enriched_low_conf: 0,
-    not_found: 0,
-  };
+
+  let validatedCorrect = 0;
+  let withGt = 0;
+  let highUpdate = 0;
+  let mediumFill = 0;
+  let enriched = 0;
+
   done.forEach((a) => {
-    const cat = effectiveCategory(a, humanVerdicts[a.label]);
-    if (counts[cat] !== undefined) counts[cat] += 1;
+    const edit = humanEdits[a.label];
+    const verdict = humanVerdicts[a.label];
+    const band = effectiveBand(a, edit);
+    const value = effectiveValue(a, edit);
+    const hasAnswer = a.available && value != null && String(value).trim() !== "";
+    // Use the SAME category the row status pill uses so the dashboard totals
+    // always match what the table shows. The four buckets are mutually
+    // exclusive: an "enriched" (GT-null) answer is never counted as "updated".
+    const cat = effectiveCategory(a, verdict, band);
+
+    if (a.has_gt) withGt += 1;
+
+    if (cat === "validated_correct") {
+      // a) correctly validated against the ground truth.
+      validatedCorrect += 1;
+    } else if (cat === "updated") {
+      // b) had GT, model overwrote it with HIGH confidence.
+      highUpdate += 1;
+    } else if (cat === "enriched_confident") {
+      // d) GT was null, model produced a HIGH-confidence answer.
+      enriched += 1;
+    } else if (cat === "enriched_medium") {
+      // c) GT null, MEDIUM-confidence fill (needs review).
+      mediumFill += 1;
+    } else if (cat === "validated_incorrect" && band === "medium" && hasAnswer) {
+      // c) disagreed with GT at MEDIUM confidence (needs review).
+      mediumFill += 1;
+    }
   });
-  const humanValidated = Object.keys(humanVerdicts).length;
-  const enriched = counts.enriched_confident + counts.enriched_low_conf;
 
   const cards = [
-    { key: "vc", label: "Validated correct", value: pct(counts.validated_correct, total), sub: `${counts.validated_correct} of ${total}`, tone: "good" },
-    { key: "vi", label: "Validated incorrect", value: pct(counts.validated_incorrect, total), sub: `${counts.validated_incorrect} of ${total}`, tone: "bad" },
-    { key: "hv", label: "Human verified", value: `${humanValidated}`, sub: "reviewed by you", tone: "info" },
-    { key: "en", label: "Enriched (null field)", value: `${enriched}`, sub: "filled from document", tone: "info" },
-    { key: "ec", label: "Confident enriched", value: `${counts.enriched_confident}`, sub: "high confidence", tone: "good" },
-    { key: "el", label: "Low-confidence enriched", value: `${counts.enriched_low_conf}`, sub: "needs review", tone: "warn" },
-    { key: "nf", label: "Not found", value: `${counts.not_found}`, sub: "kept null", tone: "muted" },
+    { key: "vc", label: "Validated with ground truth", value: `${validatedCorrect}`, sub: `of ${withGt} with GT`, tone: "good" },
+    { key: "hu", label: "Updated (high confidence)", value: `${highUpdate}`, sub: "model filled / updated", tone: "enriched" },
+    { key: "mf", label: "Filled (medium confidence)", value: `${mediumFill}`, sub: "null filled / updated earlier", tone: "warn" },
+    { key: "en", label: "Enriched (GT null)", value: `${enriched}`, sub: "answer beyond ground truth", tone: "info" },
   ];
 
   return (
@@ -193,14 +239,171 @@ function Dashboard({ attributes, humanVerdicts }) {
   );
 }
 
-function ConfidenceBar({ value }) {
+function ConfidenceBar({ value, band }) {
   if (value === null || value === undefined) return <span className="subtle">n/a</span>;
   const p = Math.round(value * 100);
-  const tone = value >= 0.6 ? "good" : value >= 0.35 ? "warn" : "bad";
+  const b = band || bandForConfidence(value);
+  const tone = b === "high" ? "good" : b === "medium" ? "warn" : "bad";
   return (
-    <div className="conf-bar" title={`confidence ${p}%`}>
+    <div className="conf-bar" title={`CoVe confidence ${p}% (${b})`}>
       <div className={`conf-fill ${tone}`} style={{ width: `${p}%` }} />
       <span className="conf-num">{p}%</span>
+    </div>
+  );
+}
+
+const VERDICT_META = {
+  consistent: { cls: "pass", text: "CONSISTENT" },
+  inconsistent: { cls: "fail", text: "INCONSISTENT" },
+  not_found: { cls: "na", text: "NOT FOUND" },
+};
+
+// CoVe corroboration checks for a single attribute answer. Renders pending /
+// checking / judged states so the verification can be watched live.
+function CoveChecks({ checks, open }) {
+  if (!checks || checks.length === 0) return null;
+  const judged = checks.filter((c) => c && c.verdict).length;
+  return (
+    <details className="conf-checks" open={open}>
+      <summary>CoVe questions ({judged}/{checks.length} judged)</summary>
+      <ul className="conf-check-list">
+        {checks.map((c, i) => {
+          let badge;
+          if (c.verdict) {
+            const meta = VERDICT_META[c.verdict] || VERDICT_META.not_found;
+            badge = <span className={`vbadge ${meta.cls}`}>{meta.text}</span>;
+          } else if (c.running) {
+            badge = (
+              <span className="vbadge na">
+                <span className="spin" /> checking
+              </span>
+            );
+          } else {
+            badge = <span className="vbadge na">pending</span>;
+          }
+          return (
+            <li key={i} className={`conf-check ${c.running ? "current" : ""}`}>
+              <div className="conf-check-head">
+                {badge}
+                <span className="conf-check-rel">{c.relevance}</span>
+              </div>
+              <div className="conf-check-q">{c.question}</div>
+              {c.rule && <div className="conf-check-rule">rule: {c.rule}</div>}
+              {c.related_fact && <div className="conf-check-fact">found: {c.related_fact}</div>}
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+// Full, step-by-step visualisation of one query's pipeline:
+// retrieval -> reranking -> LLM answer -> CoVe verification.
+function PipelineSteps({ attr, selectedChunkId, onSelect }) {
+  if (!attr) return null;
+  const band = attr.band;
+  const confPct = attr.confidence != null ? Math.round(attr.confidence * 100) : null;
+  const verbPct =
+    attr.verbalized_confidence != null ? Math.round(attr.verbalized_confidence * 100) : null;
+  const reranked = attr.reranked_chunks || attr.chunks || [];
+  const retrieved = attr.retrieved_chunks || [];
+  const bandTone = band === "high" ? "good" : band === "medium" ? "warn" : "bad";
+  const sug = attr.cove_suggestion;
+  return (
+    <div className="pipe-steps">
+      <div className="pipe-step">
+        <div className="pipe-step-title">
+          <span className="pipe-step-num">1</span> Retrieval
+          <span className="count">{retrieved.length}</span>
+        </div>
+        <div className="pipe-step-body">
+          <div className="subtle pipe-q">query: {attr.retrieval_query || attr.question || "—"}</div>
+          <details className="pipe-chunks">
+            <summary>{retrieved.length} retrieved chunks</summary>
+            <ChunksView
+              title=""
+              chunks={retrieved}
+              selectedId={selectedChunkId}
+              onSelect={onSelect}
+              badge="dense/hybrid"
+            />
+          </details>
+        </div>
+      </div>
+
+      <div className="pipe-step">
+        <div className="pipe-step-title">
+          <span className="pipe-step-num">2</span> Reranking
+          <span className="count">{reranked.length}</span>
+        </div>
+        <div className="pipe-step-body">
+          <details className="pipe-chunks" open>
+            <summary>{reranked.length} reranked chunks (top)</summary>
+            <ChunksView
+              title=""
+              chunks={reranked}
+              selectedId={selectedChunkId}
+              onSelect={onSelect}
+              badge="cross-encoder"
+            />
+          </details>
+        </div>
+      </div>
+
+      <div className="pipe-step">
+        <div className="pipe-step-title">
+          <span className="pipe-step-num">3</span> LLM answer
+        </div>
+        <div className="pipe-step-body">
+          <div className="pipe-answer">
+            {attr.answer || <span className="subtle">no answer</span>}
+          </div>
+          {verbPct != null && (
+            <div className="subtle">model self-reported confidence: {verbPct}%</div>
+          )}
+        </div>
+      </div>
+
+      <div className="pipe-step">
+        <div className="pipe-step-title">
+          <span className="pipe-step-num">4</span> CoVe verification
+          {band && (
+            <span className={`pill ${bandTone}`}>
+              {band}
+              {confPct != null ? ` · ${confPct}%` : ""}
+            </span>
+          )}
+          {attr.cove_rounds > 0 && (
+            <span className="pill info">
+              re-verified ×{attr.cove_rounds}
+            </span>
+          )}
+        </div>
+        <div className="pipe-step-body">
+          {attr.cove_rounds > 0 && (
+            <div className="subtle">
+              confidence was low; accepted the verifier's correction and
+              re-scored {attr.cove_rounds} time{attr.cove_rounds > 1 ? "s" : ""}
+              {" "}— confidence below reflects the final value.
+            </div>
+          )}
+          {attr.cove_checks && attr.cove_checks.length > 0 ? (
+            <CoveChecks checks={attr.cove_checks} open />
+          ) : (
+            <div className="subtle">no verification checks</div>
+          )}
+          {sug && sug.suggested_answer && (
+            <div className="suggestion-box">
+              <div className="suggestion-title">
+                CoVe suggested correction{attr.auto_corrected ? " (auto-accepted)" : ""}
+              </div>
+              <div className="suggestion-value">{sug.suggested_answer}</div>
+              {sug.reason && <div className="suggestion-reason">{sug.reason}</div>}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -213,6 +416,7 @@ const PHASES_RESET = {
   retrieve: "pending",
   rerank: "pending",
   generate: "pending",
+  verify: "pending",
   output: "pending",
 };
 
@@ -247,7 +451,15 @@ export default function Enrichment({ onHome }) {
   const [selectedLabel, setSelectedLabel] = useState(null);
   const [selectedChunkId, setSelectedChunkId] = useState(null);
   const [humanVerdicts, setHumanVerdicts] = useState({});
+  // Human edits for medium-confidence answers (requirement 6): label -> new value.
+  // An edited answer is promoted to high confidence.
+  const [humanEdits, setHumanEdits] = useState({});
+  const [editDraft, setEditDraft] = useState("");
   const [detailBlock, setDetailBlock] = useState(null);
+
+  // Total attribute-query count captured off the stream so the "generate queries"
+  // counter is not reset by a stale closure value (requirement 4).
+  const genqTotalRef = useRef(0);
 
   const selectedDoc = documents.find((d) => d.id === selectedDocId);
 
@@ -277,23 +489,31 @@ export default function Enrichment({ onHome }) {
     setJsonMsg("");
   }
 
-  // Pull the structured JSON already on disk for a doc so the user does not have
-  // to upload one when the PDF already has a matching structured file.
+  // Pull the record to enrich from new_checking_truth/<id>.json (requirement 1),
+  // falling back to matched_json, so the user need not upload one manually.
   async function loadMatchedJson(docId) {
+    let record = null;
+    let origin = "";
     try {
-      const record = await api.matched(docId);
-      const data =
-        record && typeof record.data === "object" && record.data ? record.data : record;
-      const count = data && typeof data === "object" ? Object.keys(data).length : 0;
-      setStructured(record);
-      setStructuredName(`${docId}.json`);
-      setStructuredCount(count);
-      setStructuredSource("auto");
-      setJsonMsg(`Using the structured JSON already on file for ${docId} (${count} fields).`);
-      return true;
+      record = await api.enrichmentSource(docId);
+      origin = "new_checking_truth";
     } catch (err) {
-      return false;
+      try {
+        record = await api.matched(docId);
+        origin = "matched_json";
+      } catch (err2) {
+        return false;
+      }
     }
+    const data =
+      record && typeof record.data === "object" && record.data ? record.data : record;
+    const count = data && typeof data === "object" ? Object.keys(data).length : 0;
+    setStructured(record);
+    setStructuredName(`${docId}.json`);
+    setStructuredCount(count);
+    setStructuredSource("auto");
+    setJsonMsg(`Using the ${origin} record for ${docId} (${count} fields).`);
+    return true;
   }
 
   async function handleUpload(e) {
@@ -372,14 +592,17 @@ export default function Enrichment({ onHome }) {
     setSelectedLabel(null);
     setSelectedChunkId(null);
     setHumanVerdicts({});
+    setHumanEdits({});
     setDetailBlock(null);
     setError("");
+    genqTotalRef.current = 0;
   }
 
   function markSubStage(sub) {
     setPhases((prev) => {
-      const order = ["retrieve", "rerank", "generate"];
+      const order = ["retrieve", "rerank", "generate", "verify"];
       const cur = order.indexOf(sub);
+      if (cur < 0) return prev;
       const next = { ...prev };
       order.forEach((id, i) => {
         if (next[id] === "done") return;
@@ -439,6 +662,7 @@ export default function Enrichment({ onHome }) {
           case "queries":
             setPhase("embed", "done");
             setPhase("fields", "done");
+            genqTotalRef.current = ev.count || 0;
             setQueriesInfo({
               count: ev.count,
               labels: ev.labels || [],
@@ -452,14 +676,20 @@ export default function Enrichment({ onHome }) {
           case "generate_queries":
             if (ev.status === "start") {
               setPhase("genq", "active");
+              if (ev.count) genqTotalRef.current = ev.count;
             } else if (ev.status === "progress") {
-              setGenqDone(ev.completed ?? (ev.index || 0) + 1);
+              if (ev.total) genqTotalRef.current = ev.total;
+              // Never move the counter backwards (progress events can arrive out
+              // of order when queries are generated across a thread pool).
+              setGenqDone((prev) => Math.max(prev, ev.completed ?? (ev.index || 0) + 1));
               if (ev.label) {
                 updateAttr(ev.index, { query: ev.query });
               }
             } else if (ev.status === "done") {
               setPhase("genq", "done");
-              setGenqDone(queriesInfo?.count || genqDone);
+              // Show the full count (ref survives the stale-closure trap that
+              // previously reset this to 0/5).
+              setGenqDone(genqTotalRef.current);
               if (ev.cost_usd) {
                 setCost((c) => ({ ...c, generation: c.generation + ev.cost_usd }));
               }
@@ -470,24 +700,80 @@ export default function Enrichment({ onHome }) {
               setPhase("retrieve", "active");
               setPhase("rerank", "active");
               setPhase("generate", "active");
+              setPhase("verify", "active");
             }
             break;
           case "attribute":
             if (ev.status === "start") {
               setCurrentLabel(ev.label);
-              updateAttr(ev.index, { label: ev.label, question: ev.question, status: "running" });
+              updateAttr(ev.index, { label: ev.label, question: ev.question, status: "queued" });
             } else if (ev.status === "retrieve") {
               markSubStage("retrieve");
               setActiveSub("retrieve");
-              updateAttr(ev.index, { status: "retrieve" });
+              setCurrentLabel(ev.label);
+              updateAttr(ev.index, { status: "retrieve", retrieval_query: ev.query });
+            } else if (ev.status === "retrieved") {
+              updateAttr(ev.index, { retrieved_chunks: ev.chunks || [] });
             } else if (ev.status === "rerank") {
               markSubStage("rerank");
               setActiveSub("rerank");
+              setCurrentLabel(ev.label);
               updateAttr(ev.index, { status: "rerank" });
+            } else if (ev.status === "reranked") {
+              updateAttr(ev.index, { reranked_chunks: ev.chunks || [], chunks: ev.chunks || [] });
             } else if (ev.status === "generate") {
               markSubStage("generate");
               setActiveSub("generate");
+              setCurrentLabel(ev.label);
               updateAttr(ev.index, { status: "generate" });
+            } else if (ev.status === "answered") {
+              updateAttr(ev.index, {
+                answer: ev.answer,
+                available: ev.available,
+                verbalized_confidence: ev.verbalized_confidence,
+              });
+            } else if (ev.status === "verify") {
+              markSubStage("verify");
+              setActiveSub("verify");
+              setCurrentLabel(ev.label);
+              updateAttr(ev.index, { status: "verify" });
+            } else if (ev.status === "cove_plan") {
+              setActiveSub("verify");
+              updateAttr(ev.index, {
+                cove_checks: (ev.checks || []).map((c) => ({ ...c, verdict: null })),
+                ...(ev.round ? { cove_rounds: ev.round } : {}),
+              });
+            } else if (ev.status === "cove_retry") {
+              setActiveSub("verify");
+              updateAttr(ev.index, {
+                cove_rounds: ev.round,
+                cove_retry_answer: ev.answer,
+                answer: ev.answer,
+              });
+            } else if (ev.status === "cove_check") {
+              setActiveSub("verify");
+              // Mark which check is currently being judged.
+              setAttributes((prev) => {
+                const next = [...prev];
+                const a = next[ev.index];
+                if (a) {
+                  const checks = [...(a.cove_checks || [])];
+                  if (checks[ev.i]) checks[ev.i] = { ...checks[ev.i], running: true };
+                  next[ev.index] = { ...a, cove_checks: checks, cove_current: ev.i };
+                }
+                return next;
+              });
+            } else if (ev.status === "cove_check_done") {
+              setAttributes((prev) => {
+                const next = [...prev];
+                const a = next[ev.index];
+                if (a) {
+                  const checks = [...(a.cove_checks || [])];
+                  checks[ev.i] = { ...ev.check, running: false };
+                  next[ev.index] = { ...a, cove_checks: checks };
+                }
+                return next;
+              });
             } else if (ev.status === "done") {
               if (ev.cost_usd) {
                 setCost((c) => ({ ...c, generation: c.generation + ev.cost_usd }));
@@ -496,9 +782,16 @@ export default function Enrichment({ onHome }) {
                 status: "done",
                 raw_name: ev.raw_name,
                 question: ev.question,
+                retrieval_query: ev.retrieval_query,
                 answer: ev.answer,
                 available: ev.available,
                 confidence: ev.confidence,
+                verbalized_confidence: ev.verbalized_confidence,
+                band: ev.band,
+                cove_checks: ev.cove_checks || [],
+                cove_suggestion: ev.cove_suggestion || null,
+                cove_rounds: ev.cove_rounds || 0,
+                auto_corrected: !!ev.auto_corrected,
                 normalized: ev.normalized,
                 value: ev.value,
                 source_pages: ev.source_pages || [],
@@ -510,6 +803,8 @@ export default function Enrichment({ onHome }) {
                 matches_gt: ev.matches_gt,
                 category: ev.category,
                 chunks: ev.chunks || [],
+                retrieved_chunks: ev.retrieved_chunks || [],
+                reranked_chunks: ev.reranked_chunks || [],
                 pages: ev.pages || [],
               });
             }
@@ -518,6 +813,7 @@ export default function Enrichment({ onHome }) {
             setPhase("retrieve", "done");
             setPhase("rerank", "done");
             setPhase("generate", "done");
+            setPhase("verify", "done");
             setPhase("output", "done");
             setCurrentLabel(null);
             setActiveSub(null);
@@ -550,6 +846,33 @@ export default function Enrichment({ onHome }) {
     });
   }
 
+  // Requirement 6: the reviewer edits a medium-confidence answer themselves.
+  // Saving the edit promotes the attribute to high confidence.
+  function saveEdit(label) {
+    const v = (editDraft || "").trim();
+    if (!v) return;
+    setHumanEdits((prev) => ({ ...prev, [label]: { value: v } }));
+  }
+
+  function clearEdit(label) {
+    setHumanEdits((prev) => {
+      const next = { ...prev };
+      delete next[label];
+      return next;
+    });
+  }
+
+  // Seed the edit box with the current (or already-edited) value when a new
+  // attribute is opened for review.
+  useEffect(() => {
+    if (!selectedLabel) return;
+    const attr = attributes.find((a) => a.label === selectedLabel);
+    if (!attr) return;
+    const edit = humanEdits[selectedLabel];
+    setEditDraft(String((edit && edit.value != null ? edit.value : attr.value) ?? ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLabel]);
+
   function handleDownload() {
     if (!enrichedJson) return;
     // Start from the backend-enriched record (nulls filled + high-confidence
@@ -559,6 +882,12 @@ export default function Enrichment({ onHome }) {
     const data = out && typeof out.data === "object" && out.data ? out.data : out;
     attributes.forEach((a) => {
       if (a.status !== "done" || !a.raw_name) return;
+      // A human edit (requirement 6) takes precedence and is written verbatim.
+      const edit = humanEdits[a.label];
+      if (edit && edit.value != null && edit.value !== "") {
+        data[a.raw_name] = edit.value;
+        return;
+      }
       const verdict = humanVerdicts[a.label];
       if (!verdict) return;
       if (verdict === "correct" && a.value != null) {
@@ -706,26 +1035,6 @@ export default function Enrichment({ onHome }) {
             {buildMsg && <div className="hint subtle" style={{ marginTop: 8 }}>{buildMsg}</div>}
           </div>
 
-          {(running || summary) && (
-            <div className="panel">
-              <div className="panel-title">Cost</div>
-              <div className="cost-total">${(cost.embedding + cost.generation).toFixed(4)}</div>
-              <div className="cost-rows">
-                <div className="cost-row">
-                  <span className="subtle">Embedding</span>
-                  <span>${cost.embedding.toFixed(4)}</span>
-                </div>
-                <div className="cost-row">
-                  <span className="subtle">Generation</span>
-                  <span>${cost.generation.toFixed(4)}</span>
-                </div>
-              </div>
-              <div className="hint subtle" style={{ marginTop: 8 }}>
-                Estimated cost to enrich this document.
-              </div>
-            </div>
-          )}
-
           {enrichedJson && (
             <div className="panel">
               <div className="panel-title">Output</div>
@@ -755,7 +1064,6 @@ export default function Enrichment({ onHome }) {
               total={queriesInfo?.count || 0}
               currentLabel={currentLabel}
               activeSub={activeSub}
-              cost={cost}
             />
             {detailBlock && (
               <div className="flow-detail">
@@ -791,7 +1099,7 @@ export default function Enrichment({ onHome }) {
           {summary && (
             <section className="card">
               <div className="section-head">Dashboard</div>
-              <Dashboard attributes={attributes} humanVerdicts={humanVerdicts} />
+              <Dashboard attributes={attributes} humanVerdicts={humanVerdicts} humanEdits={humanEdits} />
             </section>
           )}
 
@@ -814,10 +1122,13 @@ export default function Enrichment({ onHome }) {
                   <tbody>
                     {attributes.map((a) => {
                       const verdict = humanVerdicts[a.label];
-                      const cat = a.status === "done" ? effectiveCategory(a, verdict) : null;
+                      const edit = humanEdits[a.label];
+                      const band = a.status === "done" ? effectiveBand(a, edit) : null;
+                      const value = a.status === "done" ? effectiveValue(a, edit) : null;
+                      const cat = a.status === "done" ? effectiveCategory(a, verdict, band) : null;
                       const tone = cat ? toneForCategory(cat) : "muted";
                       const isSel = selectedLabel === a.label;
-                      const canVerify = a.status === "done" && a.category !== "validated_correct";
+                      const canOpen = a.status !== "pending";
                       return (
                         <tr key={a.label} className={`attr-row ${tone} ${isSel ? "sel" : ""}`}>
                           <td className="attr-name">{a.label}</td>
@@ -826,28 +1137,41 @@ export default function Enrichment({ onHome }) {
                               <span className="subtle">
                                 {a.status === "pending" ? "queued" : `${a.status}...`}
                               </span>
-                            ) : a.value ? (
-                              <span>{a.value}</span>
+                            ) : value ? (
+                              <span>{value}</span>
                             ) : (
                               <span className="subtle">null</span>
                             )}
+                            {edit && <span className="tag-edited"> edited</span>}
+                            {!edit && a.auto_corrected && (
+                              <span className="tag-auto" title="Auto-accepted CoVe correction (low confidence)">
+                                {" "}auto
+                              </span>
+                            )}
                             {a.status === "done" && a.has_gt && (
-                              <div className="attr-gt subtle">structured: {String(a.ground_truth)}</div>
+                              <div className="attr-gt subtle">ground truth: {String(a.ground_truth)}</div>
                             )}
                           </td>
                           <td className="attr-conf">
-                            {a.status === "done" ? <ConfidenceBar value={a.confidence} /> : null}
+                            {a.status === "done" ? (
+                              <ConfidenceBar value={a.confidence} band={band} />
+                            ) : null}
                           </td>
                           <td>
                             {cat && (
                               <span className={`pill ${tone}`}>
-                                {verdict ? (verdict === "correct" ? "you: correct" : "you: incorrect")
+                                {verdict
+                                  ? verdict === "correct"
+                                    ? "you: correct"
+                                    : "you: incorrect"
+                                  : edit
+                                  ? "edited (high)"
                                   : CATEGORY_LABEL[cat] || cat}
                               </span>
                             )}
                           </td>
                           <td>
-                            {canVerify && (
+                            {canOpen && (
                               <button
                                 type="button"
                                 className={`hitl-btn ${isSel ? "on" : ""}`}
@@ -856,7 +1180,7 @@ export default function Enrichment({ onHome }) {
                                   setSelectedChunkId(null);
                                 }}
                               >
-                                Verify
+                                {a.status === "done" ? "Details" : "Watch"}
                               </button>
                             )}
                           </td>
@@ -867,45 +1191,105 @@ export default function Enrichment({ onHome }) {
                 </table>
               </section>
 
-              {selectedAttr && (
+              {selectedAttr && (() => {
+                const edit = humanEdits[selectedAttr.label];
+                const band = effectiveBand(selectedAttr, edit);
+                const value = effectiveValue(selectedAttr, edit);
+                const isMedium = band === "medium";
+                const isDone = selectedAttr.status === "done";
+                return (
                 <section className="card hitl-card">
                   <div className="section-head">
-                    Verify: <strong>{selectedAttr.label}</strong>
-                  </div>
-                  <div className="hitl-answer">
-                    <div>
-                      <span className="subtle">Our answer: </span>
-                      {selectedAttr.value || <span className="subtle">null</span>}
-                    </div>
-                    {selectedAttr.has_gt && (
-                      <div className="subtle">Structured value: {String(selectedAttr.ground_truth)}</div>
+                    Query steps: <strong>{selectedAttr.label}</strong>
+                    {isDone ? (
+                      <span className={`pill ${toneForCategory(effectiveCategory(selectedAttr, humanVerdicts[selectedAttr.label], band))}`}>
+                        {edit ? "edited (high)" : `${band || "?"} confidence`}
+                      </span>
+                    ) : (
+                      <span className="pill muted">
+                        <span className="spin" /> {selectedAttr.status || "running"}…
+                      </span>
                     )}
-                    <div className="hitl-verdict">
-                      <button
-                        type="button"
-                        className={`verdict-btn good ${humanVerdicts[selectedAttr.label] === "correct" ? "on" : ""}`}
-                        onClick={() => setVerdict(selectedAttr.label, "correct")}
-                      >
-                        &#10003; Correct
-                      </button>
-                      <button
-                        type="button"
-                        className={`verdict-btn bad ${humanVerdicts[selectedAttr.label] === "incorrect" ? "on" : ""}`}
-                        onClick={() => setVerdict(selectedAttr.label, "incorrect")}
-                      >
-                        &#10007; Incorrect
-                      </button>
-                    </div>
                   </div>
-                  <ChunksView
-                    title="Retrieved chunks"
-                    chunks={selectedAttr.chunks}
-                    selectedId={selectedChunkId}
+
+                  {isDone && (
+                    <div className="hitl-answer">
+                      <div>
+                        <span className="subtle">Model answer: </span>
+                        {value || <span className="subtle">null</span>}
+                      </div>
+                      {selectedAttr.auto_corrected && !edit && (
+                        <div className="subtle">
+                          Auto-accepted CoVe correction (answer had low confidence).
+                        </div>
+                      )}
+                      {selectedAttr.has_gt && (
+                        <div className="subtle">Ground truth: {String(selectedAttr.ground_truth)}</div>
+                      )}
+
+                      {/* Requirement 6: reviewer edits a medium-confidence answer;
+                          saving it promotes the attribute to high confidence. */}
+                      {isMedium && (
+                        <div className="hitl-edit">
+                          <label className="subtle">Edit the answer (use the chunks below):</label>
+                          <div className="hitl-edit-row">
+                            <input
+                              type="text"
+                              className="hitl-edit-input"
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              placeholder="Corrected value"
+                            />
+                            <button
+                              type="button"
+                              className="verdict-btn good"
+                              onClick={() => saveEdit(selectedAttr.label)}
+                            >
+                              Save &amp; mark high confidence
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {edit && (
+                        <div className="hitl-edit-row" style={{ marginTop: 6 }}>
+                          <span className="subtle">Your edit is applied.</span>
+                          <button
+                            type="button"
+                            className="verdict-btn"
+                            onClick={() => clearEdit(selectedAttr.label)}
+                          >
+                            Clear edit
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="hitl-verdict">
+                        <button
+                          type="button"
+                          className={`verdict-btn good ${humanVerdicts[selectedAttr.label] === "correct" ? "on" : ""}`}
+                          onClick={() => setVerdict(selectedAttr.label, "correct")}
+                        >
+                          &#10003; Correct
+                        </button>
+                        <button
+                          type="button"
+                          className={`verdict-btn bad ${humanVerdicts[selectedAttr.label] === "incorrect" ? "on" : ""}`}
+                          onClick={() => setVerdict(selectedAttr.label, "incorrect")}
+                        >
+                          &#10007; Incorrect
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <PipelineSteps
+                    attr={selectedAttr}
+                    selectedChunkId={selectedChunkId}
                     onSelect={setSelectedChunkId}
-                    badge="for this attribute"
                   />
                 </section>
-              )}
+                );
+              })()}
             </div>
 
             <div className="results-right">

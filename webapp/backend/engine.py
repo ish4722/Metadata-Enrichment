@@ -16,6 +16,7 @@ UI, matching the project's "change chunking in the config only" rule.
 
 from __future__ import annotations
 
+import json
 import threading
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -27,12 +28,18 @@ from rag.indexing.embeddings import EmbeddingBackend
 from rag.inference.context_builder import build_context
 from rag.inference.hierarchical_answer import answer_with_hierarchical_context
 from rag.inference.llm import answer_with_llm, get_llm
-from rag.inference.prompt import make_prompt
+from rag.inference.prompt import make_prompt, parse_generator_json
 from rag.inference.reranker import get_reranker, rerank
+from rag.inference import verification as V
 
 import rag_evaluation
 
 from highlights import highlights_for_matches
+
+
+# Documents that must ALWAYS be re-embedded on build (cache bypassed) so the
+# embedding step can be demoed/recorded. Compared case-insensitively.
+_ALWAYS_REEMBED = {"pr2610"}
 
 
 def _chunk_payload(chunk: Chunk, score: float) -> Dict[str, Any]:
@@ -76,6 +83,10 @@ class RagEngine:
             cfg.use_reranker = bool(overrides["use_reranker"])
         if overrides.get("top_k") is not None:
             cfg.top_k = int(overrides["top_k"])
+        if overrides.get("verify") is not None:
+            cfg.verify_enabled = bool(overrides["verify"])
+        if overrides.get("verify_num_questions") is not None:
+            cfg.verify_num_questions = int(overrides["verify_num_questions"])
         return cfg
 
     def get_backend(self, cfg: RagConfig) -> EmbeddingBackend:
@@ -119,10 +130,19 @@ class RagEngine:
                    "collection": cfg.chroma_collection}
 
             store = self.get_store(cfg)
+            # Demo docs are ALWAYS re-embedded (never served from Chroma) so the
+            # embedding step is visible/recordable. Existing vectors are cleared
+            # first to avoid duplicates.
+            force_reembed = doc_id.strip().lower() in _ALWAYS_REEMBED
             if store.has_document(doc_id):
-                yield {"stage": "done", "already_built": True, "added": 0,
-                       "message": f"{doc_id} already embedded in '{cfg.chroma_collection}'."}
-                return
+                if force_reembed:
+                    yield {"stage": "reset", "message":
+                           f"Re-embedding {doc_id} (demo doc, cache bypassed)."}
+                    store.delete_document(doc_id)
+                else:
+                    yield {"stage": "done", "already_built": True, "added": 0,
+                           "message": f"{doc_id} already embedded in '{cfg.chroma_collection}'."}
+                    return
 
             yield {"stage": "chunking", "status": "start"}
             chunks = chunks_from_json(datalab_path, cfg)
@@ -171,6 +191,132 @@ class RagEngine:
             keys = {(c.source, c.page) for c, _ in matches}
             return store.fetch_chunks_for_pages(keys)
         return [c for c, _ in matches]
+
+    # ── CoVe confidence verification ───────────────────────────────────────────
+    @staticmethod
+    def _acc_usage(total: Dict[str, int], usage: Dict[str, Any]) -> None:
+        for k in ("input_tokens", "output_tokens", "total_tokens"):
+            total[k] = total.get(k, 0) + int((usage or {}).get(k, 0) or 0)
+
+    @staticmethod
+    def _display_answer(raw: str) -> str:
+        """Answer JSON shown in the UI: only ``answer`` + ``source_pages``.
+
+        The generator also returns ``available`` / ``confidence`` (still used by the
+        enrichment tool and as a minor CoVe input), but we hide them from the
+        Explorer's answer view. Falls back to the raw string if it is not JSON.
+        """
+        if not raw or not raw.strip():
+            return raw or ""
+        parsed = parse_generator_json(raw)
+        # Only re-serialize when the reply actually parsed as the JSON envelope;
+        # otherwise show the original text unchanged.
+        if not parsed.get("answer") and parsed.get("answer") != "":
+            return raw
+        display = {"answer": parsed.get("answer", ""), "source_pages": parsed.get("source_pages", [])}
+        return json.dumps(display, ensure_ascii=False, indent=2)
+
+    def _verify_stream(
+        self,
+        *,
+        store: ChromaVectorStore,
+        cfg: RagConfig,
+        doc_id: str,
+        question: str,
+        answer_text: str,
+        verbalized_conf: Optional[float],
+        llm: Any,
+        shared_context_items: List[Dict[str, Any]],
+    ) -> Iterator[Dict[str, Any]]:
+        """Run the Chain-of-Verification pass, yielding live progress events.
+
+        Never touches the answer: it plans indirect corroboration checks, retrieves
+        a related fact per check (fresh, via the same pipeline), lets the LLM judge
+        each rule, and aggregates the verdicts into a confidence score. Emits:
+          * ``planned``    - once, with the list of planned checks (verdicts pending)
+          * ``checking``   - per check, when it starts (question + relevance)
+          * ``check_done`` - per check, with the judged verdict + related fact
+          * ``done``       - once, with the final confidence + aggregate breakdown
+        """
+        total_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+        # 1. Plan the indirect checks.
+        raw_plan, usage = rag_evaluation.invoke_llm_with_usage(
+            llm, V.build_plan_prompt(question, answer_text, None)
+        )
+        self._acc_usage(total_usage, usage)
+        checks = V.parse_plan(raw_plan, cfg.verify_num_questions)
+        yield {"stage": "verify", "status": "planned", "count": len(checks),
+               "checks": [{"question": c["question"], "rule": c["rule"],
+                           "relevance": c["relevance"]} for c in checks]}
+
+        reranker = get_reranker(cfg.reranker_model) if cfg.use_reranker else None
+
+        # 2. Execute each check (retrieve related fact -> LLM judges the rule).
+        #    Accumulate the excerpts each check saw so a low-confidence suggestion
+        #    can be grounded in exactly what the verification looked at.
+        results: List[Dict[str, Any]] = []
+        seen_context: List[Dict[str, Any]] = []
+        seen_keys: set = set()
+        for i, chk in enumerate(checks):
+            yield {"stage": "verify", "status": "checking", "index": i,
+                   "total": len(checks), "question": chk["question"],
+                   "relevance": chk["relevance"]}
+            if cfg.verify_fresh_retrieval:
+                matches = self._retrieve(store, cfg, doc_id, chk["question"])
+                if reranker is not None and matches:
+                    matches = rerank(chk["question"], matches, cfg.reranker_model,
+                                     top_k=cfg.rerank_top_k)
+                elif matches:
+                    matches = matches[: cfg.rerank_top_k]
+                corpus = self._corpus_for_context(store, cfg, matches)
+                ctx_items, _ = build_context(matches, corpus, context_mode=cfg.context_mode)
+            else:
+                ctx_items = shared_context_items
+            for item in ctx_items:
+                key = (item.get("source"), item.get("page"), (item.get("text") or "")[:80])
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    seen_context.append(item)
+
+            raw_judge, usage = rag_evaluation.invoke_llm_with_usage(
+                llm, V.build_judge_prompt(chk, ctx_items, answer_text)
+            )
+            self._acc_usage(total_usage, usage)
+            verdict = V.parse_judge(raw_judge)
+            result = {**chk, **verdict}
+            results.append(result)
+            yield {"stage": "verify", "status": "check_done", "index": i,
+                   "total": len(checks), "check": result}
+
+        # 3. Aggregate into a single confidence score.
+        agg = V.aggregate(results, verbalized_conf)
+
+        # 4. When confidence is low, propose a corrected answer from the excerpts
+        #    the verification saw (human accepts/rejects it in the UI).
+        suggestion = None
+        if agg["band"] == V.SUGGEST_BAND:
+            sug_ctx = (seen_context if cfg.verify_fresh_retrieval
+                       else shared_context_items)[:12]
+            try:
+                raw_sug, usage = rag_evaluation.invoke_llm_with_usage(
+                    llm, V.build_suggestion_prompt(question, answer_text, results, sug_ctx)
+                )
+                self._acc_usage(total_usage, usage)
+                suggestion = V.parse_suggestion(raw_sug)
+            except Exception:  # noqa: BLE001
+                suggestion = None
+
+        v_cost = rag_evaluation.token_cost_usd(
+            total_usage.get("input_tokens", 0), total_usage.get("output_tokens", 0)
+        )
+        yield {"stage": "verify", "status": "done",
+               "confidence": round(agg["confidence"] * 100, 1),
+               "band": agg["band"], "checks": results, "breakdown": agg["breakdown"],
+               "verbalized_confidence": (round(verbalized_conf * 100, 1)
+                                         if verbalized_conf is not None else None),
+               "suggestion": suggestion,
+               "usage": total_usage, "cost_usd": v_cost}
 
     def run_query(
         self,
@@ -255,7 +401,8 @@ class RagEngine:
                     gen_cost = rag_evaluation.token_cost_usd(
                         usage.get("input_tokens", 0), usage.get("output_tokens", 0)
                     )
-                    yield {"stage": "llm", "status": "done", "answer": answer,
+                    yield {"stage": "llm", "status": "done",
+                           "answer": self._display_answer(answer),
                            "usage": usage, "cost_usd": gen_cost,
                            "escalation_depth": result.escalation_depth,
                            "llm_calls": result.llm_calls}
@@ -266,11 +413,33 @@ class RagEngine:
                     gen_cost = rag_evaluation.token_cost_usd(
                         usage.get("input_tokens", 0), usage.get("output_tokens", 0)
                     )
-                    yield {"stage": "llm", "status": "done", "answer": answer,
+                    yield {"stage": "llm", "status": "done",
+                           "answer": self._display_answer(answer),
                            "usage": usage, "cost_usd": gen_cost}
             else:
                 yield {"stage": "llm", "status": "skipped",
                        "message": "LLM unavailable - showing retrieved context only."}
+
+            # 5b. CoVe confidence verification (independent of ground truth).
+            #     Treats the answer as a hypothesis and corroborates it via related
+            #     facts + domain-logic rules. Never modifies the answer.
+            parsed = parse_generator_json(answer) if answer else {"answer": "", "confidence": None}
+            answer_text = (parsed.get("answer") or answer or "").strip()
+            verbalized_conf = parsed.get("confidence")
+            if cfg.verify_enabled and llm is not None and answer_text:
+                yield {"stage": "verify", "status": "start",
+                       "num_questions": cfg.verify_num_questions}
+                try:
+                    yield from self._verify_stream(
+                        store=store, cfg=cfg, doc_id=doc_id, question=question,
+                        answer_text=answer_text, verbalized_conf=verbalized_conf,
+                        llm=llm, shared_context_items=context_items,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    yield {"stage": "verify", "status": "error", "message": str(exc)}
+            else:
+                yield {"stage": "verify", "status": "skipped",
+                       "message": "Verification disabled or no answer to verify."}
 
             # 6. validation (only when ground truth value is present)
             gt_value = (ground_truth or {}).get("value")
@@ -279,13 +448,12 @@ class RagEngine:
                 retrieval_hit = rag_evaluation.answer_is_correct(raw_text, gt_tokens)
                 token_match = rag_evaluation.llm_answer_is_correct(answer, gt_tokens) if answer else False
                 judge_match = None
-                judge_confidence = None
                 is_coord = rag_evaluation.label_uses_coordinate_judge(label)
                 if answer and (is_coord or llm is not None):
                     try:
                         # Coordinate labels use a deterministic comparator; others
                         # use the LLM judge.
-                        judge_match, judge_confidence, _usage = rag_evaluation.judge_verdict(
+                        judge_match, _usage = rag_evaluation.judge_match_dispatch(
                             llm, label, question, str(gt_value), answer
                         )
                     except Exception as exc:  # noqa: BLE001
@@ -296,8 +464,7 @@ class RagEngine:
                        "ground_truth": gt_value,
                        "retrieval_hit": retrieval_hit,
                        "token_match": token_match,
-                       "judge_match": judge_match,
-                       "judge_confidence": judge_confidence}
+                       "judge_match": judge_match}
             else:
                 yield {"stage": "validate", "status": "skipped",
                        "message": "No ground-truth value for this query - skipping validation.",
@@ -310,6 +477,65 @@ class RagEngine:
             except Exception as exc:  # noqa: BLE001
                 yield {"stage": "highlights", "status": "error", "message": str(exc)}
 
+            yield {"stage": "complete"}
+
+    # ── re-verify an (accepted) answer ─────────────────────────────────────────
+    def run_verification(
+        self,
+        *,
+        doc_id: str,
+        question: str,
+        answer: str,
+        overrides: Optional[Dict[str, Any]] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        """Re-run ONLY the CoVe verification against a provided answer.
+
+        Used when a user accepts a suggested correction: the answer becomes the
+        accepted value and the confidence is recomputed from scratch. Streams the
+        same ``verify`` events as :meth:`run_query`, then ``complete``.
+        """
+        cfg = self.make_config(overrides)
+        with self._lock:
+            store = self.get_store(cfg)
+            if not store.has_document(doc_id):
+                yield {"stage": "error",
+                       "message": f"{doc_id} is not embedded for '{cfg.embedding_model}'."}
+                return
+            llm = self.get_llm(cfg)
+            answer_text = (answer or "").strip()
+            if llm is None or not answer_text:
+                yield {"stage": "verify", "status": "skipped",
+                       "message": "No answer or LLM unavailable."}
+                yield {"stage": "complete"}
+                return
+
+            # Only build a shared context when checks reuse it (fresh retrieval
+            # builds its own per check).
+            shared_context_items: List[Dict[str, Any]] = []
+            if not cfg.verify_fresh_retrieval:
+                matches = self._retrieve(store, cfg, doc_id, question)
+                if cfg.use_reranker and matches:
+                    reranker = get_reranker(cfg.reranker_model)
+                    if reranker is not None:
+                        matches = rerank(question, matches, cfg.reranker_model,
+                                         top_k=cfg.rerank_top_k)
+                    else:
+                        matches = matches[: cfg.rerank_top_k]
+                corpus = self._corpus_for_context(store, cfg, matches)
+                shared_context_items, _ = build_context(
+                    matches, corpus, context_mode=cfg.context_mode
+                )
+
+            yield {"stage": "verify", "status": "start",
+                   "num_questions": cfg.verify_num_questions}
+            try:
+                yield from self._verify_stream(
+                    store=store, cfg=cfg, doc_id=doc_id, question=question,
+                    answer_text=answer_text, verbalized_conf=None,
+                    llm=llm, shared_context_items=shared_context_items,
+                )
+            except Exception as exc:  # noqa: BLE001
+                yield {"stage": "verify", "status": "error", "message": str(exc)}
             yield {"stage": "complete"}
 
 

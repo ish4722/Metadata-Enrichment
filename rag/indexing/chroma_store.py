@@ -185,6 +185,13 @@ class ChromaVectorStore:
         except Exception:
             return False
 
+    def delete_document(self, doc_id: str) -> None:
+        """Remove every stored chunk for ``doc_id`` so it can be re-embedded."""
+        try:
+            self.collection.delete(where={"doc_id": doc_id})
+        except Exception:
+            pass
+
     def fetch_chunks_for_pages(self, keys) -> List[Chunk]:
         """Return every stored chunk on the given ``(source, page)`` pages.
 

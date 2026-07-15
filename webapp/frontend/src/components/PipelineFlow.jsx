@@ -5,6 +5,7 @@ const STAGES = [
   { id: "retrieve", label: "Retrieve", icon: "search" },
   { id: "rerank", label: "Rerank", icon: "sort" },
   { id: "llm", label: "LLM answer", icon: "AI" },
+  { id: "verify", label: "Verify (CoVe)", icon: "shield" },
   { id: "validate", label: "Validate", icon: "check" },
   { id: "highlights", label: "Highlight PDF", icon: "mark" },
 ];

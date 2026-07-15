@@ -15,6 +15,7 @@ export const api = {
   embeddingModels: () => getJson("/embedding-models"),
   queries: () => getJson("/queries"),
   enrichmentDocuments: () => getJson("/enrichment/documents"),
+  enrichmentSource: (id) => getJson(`/enrichment/source/${id}`),
   groundTruthDocuments: () => getJson("/ground-truth/documents"),
   matched: (id) => getJson(`/matched/${id}`),
   pdfUrl: (id) => `${BASE}/pdf/${id}`,
