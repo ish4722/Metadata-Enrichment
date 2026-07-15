@@ -54,8 +54,8 @@ from rag.inference.llm import get_llm  # noqa: E402
 from rag.inference.prompt import inject_facility_name, make_prompt  # noqa: E402
 from rag.inference.reranker import get_reranker, rerank  # noqa: E402
 
-import evaluate_all  # noqa: E402  (reuse doc discovery)
-import rag_evaluation  # noqa: E402
+from rag.evaluation import batch as evaluate_all  # noqa: E402  (reuse doc discovery)
+from rag.evaluation import core as rag_evaluation  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

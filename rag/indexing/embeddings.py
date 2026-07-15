@@ -547,7 +547,7 @@ class EmbeddingBackend:
         """
         try:
             from langchain_openai import OpenAIEmbeddings
-            from sauth_token import get_token
+            from rag.common.sauth_token import get_token
 
             dim_note = f", dimensions={dimensions}" if dimensions else ""
             print(f"  [strategy openai] OpenAIEmbeddings('{model}'{dim_note}) ...")

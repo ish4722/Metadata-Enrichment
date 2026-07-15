@@ -32,7 +32,7 @@ from rag.inference.prompt import make_prompt, parse_generator_json
 from rag.inference.reranker import get_reranker, rerank
 from rag.inference import verification as V
 
-import rag_evaluation
+from rag.evaluation import core as rag_evaluation
 
 from highlights import highlights_for_matches
 

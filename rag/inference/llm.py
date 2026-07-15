@@ -23,7 +23,7 @@ from rag.inference.usage_callback import LLMUsageTracker
 
 try:
     from langchain_openai import ChatOpenAI
-    from sauth_token import get_token
+    from rag.common.sauth_token import get_token
     HAS_LLM = True
 except Exception:
     HAS_LLM = False

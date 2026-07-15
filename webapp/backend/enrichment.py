@@ -23,7 +23,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
-import rag_evaluation
+from rag.evaluation import core as rag_evaluation
 
 from engine import ENGINE, _chunk_payload
 from highlights import highlights_for_matches

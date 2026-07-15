@@ -132,8 +132,8 @@ def score_matryoshka_retrieval(
 
     import numpy as np
 
-    import evaluate_all
-    import rag_evaluation
+    from rag.evaluation import batch as evaluate_all
+    from rag.evaluation import core as rag_evaluation
     from rag.indexing.build_pipeline import make_backend
     from rag.indexing.chroma_store import _minmax_normalize, get_or_create_store
     from rag.inference.reranker import get_reranker, rerank

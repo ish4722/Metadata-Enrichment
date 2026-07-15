@@ -116,7 +116,7 @@ def generate_query_for_attribute(
     if not (attribute or "").strip():
         raise ValueError("attribute must be a non-empty string")
 
-    import rag_evaluation
+    from rag.evaluation import core as rag_evaluation
 
     prompt = build_generation_prompt(attribute)
     answer, usage = rag_evaluation.invoke_llm_with_usage(

@@ -136,7 +136,7 @@ def _require_file(path: str, role: str) -> None:
 
 
 def main() -> None:
-    import rag_evaluation
+    from rag.evaluation import core as rag_evaluation
     rag_evaluation.configure_utf8_stdout()
 
     args = parse_args()

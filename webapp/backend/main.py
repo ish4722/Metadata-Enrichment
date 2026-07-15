@@ -36,7 +36,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse  # noqa: E402
 
-import rag_evaluation  # noqa: E402
+from rag.evaluation import core as rag_evaluation  # noqa: E402
 
 import docs  # noqa: E402
 import goldset_review  # noqa: E402

@@ -1,4 +1,4 @@
-sauth_token.py
+rag/common/sauth_token.py
 __pycache__/
 *.pyc
 chunker.py
@@ -14,12 +14,11 @@ matched_json/
 pdf_json_pairs.txt
 datalab-output/
 index_cache/
-starter.py
+rag/data_prep/starter.py
 output_table/
 rag/faiss_store/
 chroma_store/
 chroma_store_smoke/
-SLB_Metadata_Enrichment_RAG.pptx
-~$SLB_Metadata_Enrichment_RAG.pptx
+
 
 
