@@ -1,5 +1,17 @@
 # Metadata Enrichment — RAG Pipeline & Explorer
 
+## Demo
+
+<video src="Sorted-broo-final.mp4" controls width="100%"></video>
+
+[Download demo video](Sorted-broo-final.mp4)
+
+## Presentation
+
+[Metadata Enrichment SLB (PowerPoint)](Metadata_Enrichment_SLB.pptx.pptx)
+
+---
+
 An end-to-end **Retrieval-Augmented Generation (RAG)** system that reads oil & gas
 well-completion reports (PDF → JSON) and answers structured metadata questions
 about each well — facility name, coordinates, spud/completion dates, operator,
@@ -75,6 +87,8 @@ and [`docs/architecture.md`](docs/architecture.md).
 
 ```
 Metadata-Enrichment/
+├── Sorted-broo-final.mp4              # demo walkthrough video
+├── Metadata_Enrichment_SLB.pptx.pptx  # project overview presentation
 ├── rag/                     # RAG pipeline + tooling (one Python package)
 │   ├── main.py              # entry point: build / query / interactive / evaluate
 │   ├── config.py            # ALL hyperparameters and component toggles
